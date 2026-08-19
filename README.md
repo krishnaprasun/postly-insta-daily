@@ -48,6 +48,45 @@ variants are the **weekday's deity** (Somwar–Shiv, Mangalwar–Hanuman, Budhwa
 Ganesh …) and half are a **good-morning** post, so there is still a real choice.
 The run is flagged, and **Skip today** is one click.
 
+## Four themes, so the day's options are actually different
+
+Early on, all four variants shared one cream canvas and read as the same post
+four times — useless for choosing. Each variant now gets its own ground, palette
+and decoration (`themes.py`), and asks the model for a different *kind* of image
+(`prompts.py`):
+
+| variant | canvas | the model returns |
+|---|---|---|
+| Floral cutout | light botanical cream, mandala corner | subject isolated on white |
+| Scene card | the model's backdrop, full-bleed | a designed scene, left half calm |
+| Deep festive | dark jewel ground, gold bokeh | subject isolated on white |
+| Painted scene | the model's backdrop under a wash | a painted scene, bottom half calm |
+
+On scene themes the logo is drawn white over a soft top scrim — a navy wordmark
+on an arbitrary photographic backdrop is unreadable, and which backdrop comes
+back is not knowable in advance. Cutouts get their alpha eroded before landing on
+a dark ground, or the white rim from the keyed background shows as a halo.
+
+Tributes override both the ground **and** the type colours; without the second
+half a punyatithi could go out set in festive green and gold.
+
+## Portraits of leaders
+
+A Gandhi Jayanti post without Gandhi is a weaker post, so the blanket ban on
+depicting real people is now scoped: the model may render a faithful, dignified
+likeness of a **deceased** Indian national figure, and is told to fall back to
+their strongest symbol (charkha, khadi, a lit lamp) rather than ship an
+inaccurate face. Living people remain off-limits — the calendar's
+`[LIVING - VERIFY BEFORE PUBLISH]` flag hard-blocks `show_person`. Every likeness
+post is flagged **check before posting**, because likeness fidelity is the one
+thing here a machine cannot verify.
+
+## Good-morning posts carry a quote
+
+A good-morning creative without a line worth reading is wallpaper. `quote_hi`
+holds a short Hindi suvichar for generic posts, rendered where the blessing line
+normally sits. It stays empty for real occasions.
+
 ## The template, and why the model draws no text
 
 The post is a fixed Postly brand template — cream ground, logo lockup, two-tone

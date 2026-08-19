@@ -97,6 +97,16 @@ Return RAW JSON with exactly these keys:
                  change occasion_hi to a plain name so that they do.>",
   "blessing_hi": "<one warm closing line in Hindi, MAX 14 words. For a tribute, a line of
                    remembrance instead — never a blessing for prosperity.>",
+  "quote_hi": "<ONLY for a good-morning or generic motivational post: a short Hindi quote or
+                suvichar, 1-2 lines, MAX 20 words, that a person would actually forward. Real
+                sentiment, not a fortune cookie. EMPTY STRING for every other kind of occasion.>",
+  "show_person": <true ONLY if this occasion honours a specific DECEASED public figure whose
+                  portrait belongs on the post (a national leader's jayanti/punyatithi).
+                  false for festivals, observances, and for anyone still living.>,
+  "person_name_en": "<that person's full name in English, for the illustrator. Empty otherwise.>",
+  "portrait_concept": "<if show_person: 2-3 sentences describing a dignified portrait — their
+                        recognisable appearance, attire, era, posture, and the setting or symbols
+                        around them (charkha, tricolour, khadi, a lit lamp). Empty otherwise.>",
   "context": "<one line: what this occasion actually marks>",
   "mood": "<3-6 adjectives for the artwork's emotional register>",
   "visual_concept": "<2-3 sentences describing ONE subject to draw, isolated on white:
@@ -125,6 +135,10 @@ def _fallback(ev: Dict) -> Dict:
         "prefix_hi": "" if tribute else "आप सभी को",
         "suffix_hi": "विनम्र श्रद्धांजलि" if tribute else "की हार्दिक शुभकामनाएं!",
         "blessing_hi": "",
+        "quote_hi": "",
+        "show_person": False,
+        "person_name_en": "",
+        "portrait_concept": "",
         "context": ev.get("notes", "")[:160],
         "mood": "restrained, respectful" if tribute else "warm, festive",
         "visual_concept": f"A respectful symbolic composition for {name}.",
@@ -160,9 +174,19 @@ def build(ev: Dict) -> Dict:
         tags = [t.strip() for t in tags.replace("#", "").split() if t.strip()]
     b["hashtags"] = [str(t).lstrip("#").strip()[:40] for t in tags if str(t).strip()][:12]
 
-    for k in ("occasion_hi", "prefix_hi", "suffix_hi", "blessing_hi",
-              "caption_hi", "caption_en", "occasion_en"):
+    for k in ("occasion_hi", "prefix_hi", "suffix_hi", "blessing_hi", "quote_hi",
+              "caption_hi", "caption_en", "occasion_en", "person_name_en", "portrait_concept"):
         b[k] = str(b.get(k, "")).strip()
+
+    # A likeness only goes out for someone the calendar agrees is no longer living;
+    # an AI portrait of a living person on a "jayanti" post is the wrong image AND
+    # the wrong framing.
+    living = (ev.get("warnings") and any("LIVING" in w for w in ev["warnings"]))
+    b["show_person"] = bool(b.get("show_person")) and not living and bool(b.get("portrait_concept"))
+    if b["show_person"]:
+        b["needs_human_check"] = True
+        b["check_reason"] = ((b.get("check_reason", "") + " | ") if b.get("check_reason") else "") + \
+            "Generated likeness of a real person — check the portrait actually looks like them."
     b["needs_human_check"] = bool(b.get("needs_human_check")) or bool(ev.get("warnings"))
     if ev.get("warnings") and not b.get("check_reason"):
         b["check_reason"] = " | ".join(ev["warnings"])

@@ -39,7 +39,7 @@ def _has_text(art: bytes) -> Optional[bool]:
         return None
 
 
-def _art(prompt: str, attempts: int = 2) -> Dict:
+def _art(prompt: str, system: str, attempts: int = 2) -> Dict:
     """Generate artwork, retrying once if the model drew text.
 
     If the text check still trips on the last attempt the artwork is returned
@@ -55,7 +55,7 @@ def _art(prompt: str, attempts: int = 2) -> Dict:
                 prompt + "\n\nPREVIOUS ATTEMPT FAILED because it contained written text. "
                 "Produce the same artwork with ABSOLUTELY NO letters, words, numbers or "
                 "lettered logos anywhere in the frame.")
-            art = llm.image_gen(prompts.SYSTEM_INSTRUCTION, p, timeout=config.GEN_TIMEOUT)
+            art = llm.image_gen(system, p, timeout=config.GEN_TIMEOUT)
             last_art = art
             has_text = _has_text(art)
             if has_text:
@@ -71,12 +71,13 @@ def _art(prompt: str, attempts: int = 2) -> Dict:
 
 def one_variant(i: int, brief: Dict) -> Dict:
     """Build variant i end to end."""
-    name, direction = prompts.variant(i)
-    out = {"index": i, "style": f"{name} / {imaging.layout_name(i)}", "ok": False}
+    v = prompts.variant(i)
+    out = {"index": i, "style": v["name"], "ok": False}
     try:
-        prompt = prompts.build_prompt(brief, direction)
+        prompt = prompts.build_prompt(brief, v)
+        system = prompts.system_for(v, allow_likeness=bool(brief.get("show_person")))
         out["prompt"] = prompt
-        res = _art(prompt)
+        res = _art(prompt, system)
         if not res.get("art"):
             out["error"] = res.get("error", "generation failed")
             return out
@@ -109,5 +110,5 @@ def build_variants(brief: Dict, n: Optional[int] = None) -> List[Dict]:
                 results[i] = f.result()
             except Exception as exc:  # noqa: BLE001
                 results[i] = {"index": i, "ok": False, "error": str(exc)[:300],
-                              "style": prompts.variant(i)[0]}
+                              "style": prompts.variant(i)["name"]}
     return [r for r in results if r]

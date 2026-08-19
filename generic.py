@@ -69,7 +69,9 @@ def morning_event(date_iso: str) -> Dict:
         "hook": "Suprabhat — a fresh start",
         "notes": ("GENERIC good-morning post for a day with no notable occasion. Warm, "
                   "uplifting, everyday — sunrise, chai, birds, flowers, fresh light. "
-                  "NOT tied to any festival or deity."),
+                  "NOT tied to any festival or deity. This post MUST carry a short Hindi "
+                  "quote/suvichar in quote_hi — that is the whole point of a good-morning "
+                  "post and what makes it worth forwarding."),
         "tone": "greeting",
         "occasion": "good_morning",
         "deity": "",

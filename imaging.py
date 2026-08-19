@@ -1,13 +1,15 @@
 """
-Compose the finished 1080x1080 post in the Postly brand template.
+Compose the finished 1080x1080 post.
 
-The model supplies one cutout artwork element on white (see prompts.py); every
-other pixel — background, logo lockup, two-tone Devanagari headline, blessing
-line, app-promo footer — is drawn here, so the brand stays identical day to day
-and the Hindi is always correctly shaped.
+Each variant gets its own THEME (themes.py) so the day's four options look
+genuinely different in a feed rather than four takes on one cream card:
 
-Four layouts, chosen per variant so the day's options differ in structure and
-not just in art style.
+  floral-cream  light botanical canvas, subject cut out and floated
+  deep-festive  dark jewel canvas with gold bokeh, subject floated
+  scene-card    the model's full backdrop, type on a translucent card
+  scene-wash    the model's full backdrop under a colour wash, type centred
+
+All Devanagari is shaped here, never drawn by the model.
 """
 from __future__ import annotations
 
@@ -17,7 +19,8 @@ from typing import Dict, List, Optional, Tuple
 from PIL import Image, ImageDraw, ImageFilter
 
 import brandkit as bk
-import config
+import prompts
+import themes
 
 PX = 1080
 MARGIN = 62
@@ -27,249 +30,197 @@ def shaping_available() -> bool:
     return bk.shaping_available()
 
 
-def to_square(img_bytes: bytes, px: int = PX) -> Image.Image:
-    """Fit the artwork into a square on WHITE without cropping.
-
-    The model returns whatever aspect it likes (often 16:9). Centre-cropping a
-    cutout lops the subject's edges off — a rakhi loses its tassels — so it is
-    padded instead. White padding is invisible: the cutout keys it out, and the
-    canvas behind is white anyway.
-    """
+def to_square(img_bytes: bytes, px: int = PX, pad_white: bool = True) -> Image.Image:
+    """Fit artwork to a square. Cutouts are padded (never cropped, or a rakhi
+    loses its tassels); scene backdrops are cropped to fill the frame."""
     im = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-    r = min(px / im.width, px / im.height)
+    if pad_white:
+        r = min(px / im.width, px / im.height)
+        im = im.resize((max(1, int(im.width * r)), max(1, int(im.height * r))), Image.LANCZOS)
+        sq = Image.new("RGB", (px, px), (255, 255, 255))
+        sq.paste(im, ((px - im.width) // 2, (px - im.height) // 2))
+        return sq
+    r = max(px / im.width, px / im.height)
     im = im.resize((max(1, int(im.width * r)), max(1, int(im.height * r))), Image.LANCZOS)
-    sq = Image.new("RGB", (px, px), (255, 255, 255))
-    sq.paste(im, ((px - im.width) // 2, (px - im.height) // 2))
-    return sq
+    return im.crop(((im.width - px) // 2, (im.height - px) // 2,
+                    (im.width - px) // 2 + px, (im.height - px) // 2 + px))
 
 
 def _crop_active(sq: Image.Image) -> Image.Image:
-    """Drop the white letterbox padding to_square added, keeping the real photo."""
     lum = sq.convert("L")
     inv = lum.point(lambda v: 0 if v >= 250 else 255)
     bbox = inv.getbbox()
     return sq.crop(bbox) if bbox else sq
 
 
-# ── palette per tone ────────────────────────────────────────────────────────
-def _palette(brief: Dict) -> Dict:
-    tribute = str(brief.get("tone", "")).lower() in (
+def _is_tribute(brief: Dict) -> bool:
+    return str(brief.get("tone", "")).lower() in (
         "tribute", "tribute_somber", "remembrance", "shraddhanjali")
-    if tribute:
-        return {"tribute": True, "acc1": bk.T_DARK, "acc2": bk.T_ACC,
-                "body": bk.INK, "bar": bk.T_DARK, "orn": bk.T_ACC, "bg": (250, 250, 251)}
-    return {"tribute": False, "acc1": bk.GREEN, "acc2": bk.GOLD,
-            "body": bk.INK, "bar": bk.GREEN, "orn": bk.GOLD, "bg": bk.CREAM}
-
-
-# ── background ──────────────────────────────────────────────────────────────
-def _background(pal: Dict) -> Image.Image:
-    im = Image.new("RGB", (PX, PX), pal["bg"])
-    d = ImageDraw.Draw(im, "RGBA")
-    # faint corner mandala arcs, echoing the reference creatives
-    c = (*pal["orn"], 16)
-    for r in range(150, 470, 26):
-        d.ellipse([-r + 40, PX - r - 40, r + 40, PX + r - 40], outline=c, width=2)
-    for r in range(120, 330, 24):
-        d.ellipse([PX - r - 30, -r + 30, PX + r - 30, r + 30], outline=c, width=2)
-    # soft warm wash at the top
-    wash = Image.new("L", (1, PX), 0)
-    for y in range(PX):
-        wash.putpixel((0, y), max(0, int(26 * (1 - y / (PX * 0.55)))))
-    im = Image.composite(Image.new("RGB", (PX, PX), (255, 252, 240)), im,
-                         wash.resize((PX, PX)))
-    return im
 
 
 # ── header / footer ─────────────────────────────────────────────────────────
-def _header(canvas: Image.Image, pal: Dict, centered: bool = False) -> int:
-    """Draw the logo lockup. Returns the y where content may start."""
-    lg = bk.logo(56, bk.NAVY)
+def _header(canvas, th: Dict, centered: bool = False, scrim: bool = False) -> int:
+    """Logo lockup. On a photographic backdrop the logo is white over a soft top
+    scrim — a navy wordmark on an arbitrary scene is unreadable, and which scene
+    the model returns is not knowable in advance."""
+    if scrim:
+        layer = Image.new("RGBA", (PX, PX), (0, 0, 0, 0))
+        d0 = ImageDraw.Draw(layer, "RGBA")
+        band = 200
+        for y in range(band):
+            d0.line([(0, y), (PX, y)], fill=(10, 8, 18, int(130 * (1 - y / band) ** 1.4)))
+        canvas.alpha_composite(layer)
+    col = (255, 255, 255) if (th["dark"] or scrim) else bk.NAVY
+    sub = (238, 235, 230) if (th["dark"] or scrim) else bk.MUTED
+    lg = bk.logo(56, col)
     d = ImageDraw.Draw(canvas)
     f = bk.latin(19, bold=False)
-    if lg:
-        x = (PX - lg.width) // 2 if centered else MARGIN
-        canvas.alpha_composite(lg, (x, 50))
-        tw = d.textlength(bk.TAGLINE, font=f)
-        tx = (PX - tw) / 2 if centered else MARGIN + 2
-        d.text((tx, 50 + lg.height + 8), bk.TAGLINE, font=f, fill=(*bk.MUTED, 255))
-        return 50 + lg.height + 8 + 26
-    return 50
+    if not lg:
+        return 50
+    x = (PX - lg.width) // 2 if centered else MARGIN
+    canvas.alpha_composite(lg, (x, 50))
+    tw = d.textlength(bk.TAGLINE, font=f)
+    tx = (PX - tw) / 2 if centered else MARGIN + 2
+    d.text((tx, 50 + lg.height + 8), bk.TAGLINE, font=f, fill=(*sub, 235))
+    return 50 + lg.height + 8 + 26
 
 
-def _footer(canvas: Image.Image, pal: Dict, compact: bool = False) -> int:
-    """Draw the app-promo footer. Returns the y where content must stop."""
+def _footer(canvas, th: Dict, compact: bool = False) -> int:
     d = ImageDraw.Draw(canvas)
-    bar_h = 62
+    bar_h, inner = 62, PX - MARGIN * 2
     bar_y = PX - MARGIN - bar_h
-    inner = PX - MARGIN * 2
+    bar_col = th["bar"]
 
-    # green feature bar + white "Download Now" pill on the right
     dl_w = int(inner * 0.34)
     feat_w = inner - dl_w - 12
-    bar = bk.pill((feat_w, bar_h), pal["bar"], radius=bar_h // 2)
-    canvas.alpha_composite(bar, (MARGIN, bar_y))
+    canvas.alpha_composite(bk.pill((feat_w, bar_h), bar_col, radius=bar_h // 2), (MARGIN, bar_y))
 
-    fb = bk.latin(17, bold=True)
-    fr = bk.latin(16, bold=False)
+    fb, fr = bk.latin(17, bold=True), bk.latin(16, bold=False)
+    on_bar = (26, 20, 8) if bar_col == bk.GOLD else (255, 255, 255)
     gap = feat_w / len(bk.FEATURES)
     for i, label in enumerate(bk.FEATURES):
         cx = MARGIN + gap * i + gap / 2
         tw = d.textlength(label, font=fr)
-        d.text((cx - tw / 2, bar_y + bar_h / 2 - 10), label, font=fr, fill=(255, 255, 255, 235))
+        d.text((cx - tw / 2, bar_y + bar_h / 2 - 10), label, font=fr, fill=(*on_bar, 240))
         if i:
             d.line([(MARGIN + gap * i, bar_y + 16), (MARGIN + gap * i, bar_y + bar_h - 16)],
-                   fill=(255, 255, 255, 70), width=1)
+                   fill=(*on_bar, 80), width=1)
 
-    dl = bk.pill((dl_w, bar_h), bk.WHITE, radius=bar_h // 2, outline=pal["bar"], width=2)
-    canvas.alpha_composite(dl, (MARGIN + feat_w + 12, bar_y))
     dx = MARGIN + feat_w + 12
+    canvas.alpha_composite(bk.pill((dl_w, bar_h), bk.WHITE, radius=bar_h // 2,
+                                   outline=bar_col, width=2), (dx, bar_y))
     t1, t2 = "Download Now", "Postly App"
-    w1 = d.textlength(t1, font=fr)
-    w2 = d.textlength(t2, font=fb)
-    d.text((dx + dl_w / 2 - w1 / 2, bar_y + 12), t1, font=fr, fill=(*bk.MUTED, 255))
-    d.text((dx + dl_w / 2 - w2 / 2, bar_y + 32), t2, font=fb, fill=(*pal["bar"], 255))
+    d.text((dx + dl_w / 2 - d.textlength(t1, font=fr) / 2, bar_y + 12), t1, font=fr,
+           fill=(*bk.MUTED, 255))
+    d.text((dx + dl_w / 2 - d.textlength(t2, font=fb) / 2, bar_y + 32), t2, font=fb,
+           fill=(*(bk.GOLD_DK if bar_col == bk.GOLD else bar_col), 255))
 
     if compact:
         return bar_y - 18
 
-    # promo card above the bar
     card_h = 78
     card_y = bar_y - 12 - card_h
     card_w = int(inner * 0.66)
     card = bk.pill((card_w, card_h), bk.WHITE, radius=card_h // 2)
-    canvas.alpha_composite(bk.shadow(card, blur=10, alpha=30), (MARGIN - 30, card_y - 30))
-
+    canvas.alpha_composite(bk.shadow(card, blur=10, alpha=34), (MARGIN - 30, card_y - 30))
     ic = bk.app_icon(card_h - 22)
     if ic:
         canvas.alpha_composite(ic, (MARGIN + 12, card_y + 11))
     tx = MARGIN + 12 + (card_h - 22) + 16
     d.text((tx, card_y + 12), bk.PROMO_LINE1, font=bk.latin(16, bold=False), fill=(*bk.MUTED, 255))
     d.text((tx, card_y + 32), bk.PROMO_LINE2, font=bk.latin(19, bold=True), fill=(*bk.NAVY, 255))
-    d.text((tx, card_y + 54), bk.PROMO_LINE3, font=bk.latin(16, bold=True), fill=(*pal["bar"], 255))
+    d.text((tx, card_y + 54), bk.PROMO_LINE3, font=bk.latin(16, bold=True),
+           fill=(*(bk.GOLD_DK if th["bar"] == bk.GOLD else th["bar"]), 255))
     return card_y - 18
 
 
 # ── the Hindi text block ────────────────────────────────────────────────────
-def _text_block(brief: Dict, pal: Dict, max_w: int, scale: float = 1.0,
+def _text_block(brief: Dict, th: Dict, max_w: int, scale: float = 1.0,
                 center: bool = True) -> Optional[Image.Image]:
-    """prefix / two-tone occasion / suffix / ornament / blessing, as one RGBA block."""
     def S(v):
         return max(14, int(v * scale))
 
-    rows: List[Tuple[Image.Image, int]] = []      # (image, gap-after)
+    rows: List[Tuple[Image.Image, int]] = []
     pre = (brief.get("prefix_hi") or "").strip()
     occ = (brief.get("occasion_hi") or "").strip()
     suf = (brief.get("suffix_hi") or "").strip()
-    bls = (brief.get("blessing_hi") or "").strip()
+    # a good-morning post carries a quote; everything else a one-line blessing
+    body_text = (brief.get("quote_hi") or brief.get("blessing_hi") or "").strip()
 
     if pre:
-        im = bk.fit(pre, S(38), max_w, bk.NAVY)
+        im = bk.fit(pre, S(38), max_w, th["ink"])
         if im:
             rows.append((im, S(14)))
 
     a, b = bk.split_headline(occ)
     if a:
-        im = bk.fit(a, S(126), max_w, pal["acc1"])
+        im = bk.fit(a, S(126), max_w, th["acc1"])
         if im is None:
             return None
         rows.append((im, S(4) if b else S(16)))
     if b:
-        im = bk.fit(b, S(104), max_w, pal["acc2"])
+        im = bk.fit(b, S(104), max_w, th["acc2"])
         if im:
             rows.append((im, S(16)))
     if suf:
-        for im in bk.wrap(suf, S(42), max_w, bk.NAVY, max_lines=2):
+        for im in bk.wrap(suf, S(42), max_w, th["ink"], max_lines=2):
             rows.append((im, S(8)))
         if rows:
             rows[-1] = (rows[-1][0], S(22))
     if not rows:
         return None
 
-    orn_h = S(48) if bls else 0
-    bl_imgs = bk.wrap(bls, S(29), max_w, pal["body"], bold=False, max_lines=3) if bls else []
+    orn_h = S(48) if body_text else 0
+    body_imgs = bk.wrap(body_text, S(29), max_w, th["body"], bold=False, max_lines=4) \
+        if body_text else []
 
     total_h = sum(im.height + g for im, g in rows) + orn_h + \
-        sum(im.height + S(6) for im in bl_imgs)
+        sum(im.height + S(8) for im in body_imgs)
     block = Image.new("RGBA", (max_w, max(1, total_h)), (0, 0, 0, 0))
     d = ImageDraw.Draw(block, "RGBA")
 
     y = 0
     for im, g in rows:
-        x = (max_w - im.width) // 2 if center else 0
-        block.alpha_composite(im, (x, y))
+        block.alpha_composite(im, ((max_w - im.width) // 2 if center else 0, y))
         y += im.height + g
-    if bl_imgs:
+    if body_imgs:
         bk.ornament(d, max_w // 2 if center else min(max_w // 2, 190), y + S(20),
-                    int(max_w * 0.42), pal["orn"])
+                    int(max_w * 0.42), th["orn"])
         y += orn_h
-        for im in bl_imgs:
-            x = (max_w - im.width) // 2 if center else 0
-            block.alpha_composite(im, (x, y))
-            y += im.height + S(6)
+        for im in body_imgs:
+            block.alpha_composite(im, ((max_w - im.width) // 2 if center else 0, y))
+            y += im.height + S(8)
 
     bbox = block.split()[3].getbbox()
     return block.crop((0, 0, max_w, bbox[3])) if bbox else block
 
 
-# ── layouts ─────────────────────────────────────────────────────────────────
-def _layout_hero(canvas, art, brief, pal, mirror: bool = False):
-    """Artwork down one side, text column on the other.
-
-    A very wide subject cannot fill a side column — it ends up small with a big
-    empty band above it — so wide artwork is laid out as a bottom banner instead.
-    """
+# ── subject layouts (cutout floated on a painted canvas) ────────────────────
+def _layout_hero(canvas, art, brief, th, mirror=False):
     trimmed = bk.trim(art)
     if trimmed.width / max(1, trimmed.height) > 1.5:
-        return _layout_banner(canvas, art, brief, pal)
-
-    top = _header(canvas, pal)
-    bottom = _footer(canvas, pal, compact=True)
-
-    art_w, art_h = int(PX * 0.50), bottom - top - 6
-    a = bk.scale_to(trimmed, art_w, art_h)
-    ax = PX - MARGIN - a.width if not mirror else MARGIN
-    canvas.alpha_composite(a, (ax, bottom - a.height))
-
-    col_w = PX - MARGIN * 2 - art_w - 20
-    blk = _text_block(brief, pal, col_w, scale=0.80, center=True)
+        return _layout_banner(canvas, art, brief, th)
+    top = _header(canvas, th)
+    bottom = _footer(canvas, th, compact=True)
+    a = bk.scale_to(trimmed, int(PX * 0.50), bottom - top - 6)
+    canvas.alpha_composite(a, ((PX - MARGIN - a.width) if not mirror else MARGIN,
+                               bottom - a.height))
+    col_w = PX - MARGIN * 2 - int(PX * 0.50) - 20
+    blk = _text_block(brief, th, col_w, scale=0.80, center=True)
     if blk is None:
         return False
     bx = MARGIN if not mirror else PX - MARGIN - col_w
-    # optically centred — sitting dead-centre leaves the top of the frame empty
-    by = top + max(0, int((bottom - top - blk.height) * 0.38))
-    canvas.alpha_composite(blk, (bx, by))
+    canvas.alpha_composite(blk, (bx, top + max(0, int((bottom - top - blk.height) * 0.38))))
     return True
 
 
-def _layout_typographic(canvas, art, brief, pal):
-    """Text-led, artwork as a soft watermark — the reference's second style."""
-    top = _header(canvas, pal, centered=True)
-    bottom = _footer(canvas, pal, compact=False)
-
-    a = bk.scale_to(bk.trim(art), int(PX * 0.72), int((bottom - top) * 0.92))
-    faint = a.copy()
-    faint.putalpha(faint.split()[3].point(lambda v: int(v * 0.13)))
-    canvas.alpha_composite(faint, ((PX - a.width) // 2, top + (bottom - top - a.height) // 2))
-
-    blk = _text_block(brief, pal, PX - MARGIN * 2 - 60, scale=0.92, center=True)
-    if blk is None:
-        return False
-    canvas.alpha_composite(blk, ((PX - blk.width) // 2,
-                                 top + max(0, (bottom - top - blk.height) // 2)))
-    return True
-
-
-def _layout_banner(canvas, art, brief, pal):
-    """Artwork as a large bottom element, text stacked above it."""
-    top = _header(canvas, pal, centered=True)
-    bottom = _footer(canvas, pal, compact=True)
-
+def _layout_banner(canvas, art, brief, th):
+    top = _header(canvas, th, centered=True)
+    bottom = _footer(canvas, th, compact=True)
     a = bk.scale_to(bk.trim(art), int(PX * 0.74), int((bottom - top) * 0.50))
     canvas.alpha_composite(a, ((PX - a.width) // 2, bottom - a.height))
-
     avail = bottom - a.height - top - 16
-    blk = _text_block(brief, pal, PX - MARGIN * 2 - 40, scale=0.78, center=True)
+    blk = _text_block(brief, th, PX - MARGIN * 2 - 40, scale=0.78, center=True)
     if blk is None:
         return False
     if blk.height > avail:
@@ -279,40 +230,81 @@ def _layout_banner(canvas, art, brief, pal):
     return True
 
 
-LAYOUTS = ["hero-right", "typographic", "banner", "hero-left"]
+# ── scene layouts (the model's backdrop IS the background) ──────────────────
+def _layout_scene_card(canvas, brief, th):
+    """Backdrop full-bleed, type on a translucent card over the calm half."""
+    top = _header(canvas, th, scrim=True)
+    bottom = _footer(canvas, th, compact=True)
+
+    card_w = int(PX * 0.52)
+    card_x = MARGIN
+    blk = _text_block(brief, th, card_w - 56, scale=0.76, center=True)
+    if blk is None:
+        return False
+    card_h = blk.height + 76
+    card_y = top + max(0, int((bottom - top - card_h) * 0.42))
+
+    card = bk.pill((card_w, card_h), (255, 255, 255), radius=34)
+    card.putalpha(card.split()[3].point(lambda a: int(a * 0.90)))
+    canvas.alpha_composite(bk.shadow(card, blur=16, alpha=52), (card_x - 48, card_y - 48))
+    canvas.alpha_composite(blk, (card_x + 28, card_y + 38))
+    return True
 
 
-def layout_name(i: int) -> str:
-    return LAYOUTS[i % len(LAYOUTS)]
+def _layout_scene_wash(canvas, brief, th):
+    """Backdrop under a dark wash, type centred over it."""
+    wash = Image.new("RGBA", (PX, PX), (0, 0, 0, 0))
+    d = ImageDraw.Draw(wash, "RGBA")
+    for y in range(PX):
+        t = y / PX
+        d.line([(0, y), (PX, y)], fill=(14, 10, 24, int(70 + 150 * (t ** 1.3))))
+    canvas.alpha_composite(wash)
+
+    top = _header(canvas, th, centered=True, scrim=True)
+    bottom = _footer(canvas, th, compact=True)
+    blk = _text_block(brief, th, PX - MARGIN * 2 - 60, scale=0.92, center=True)
+    if blk is None:
+        return False
+    # sits low: the model was told to keep the BOTTOM half calm, so that is where
+    # type belongs — centring it puts the headline over the subject's face.
+    canvas.alpha_composite(blk, ((PX - blk.width) // 2,
+                                 bottom - blk.height - int(PX * 0.03)))
+    return True
 
 
 # ── entry point ─────────────────────────────────────────────────────────────
+def layout_name(i: int) -> str:
+    return prompts.variant(i)["theme"]
+
+
 def compose(art_bytes: bytes, brief: Dict, variant: int = 0) -> Tuple[bytes, Dict]:
-    """Artwork + brief -> finished branded post. Returns (jpeg_bytes, notes)."""
-    pal = _palette(brief)
-    canvas = _background(pal).convert("RGBA")
+    v = prompts.variant(variant)
+    th = themes.theme(v["theme"])
+    tribute = _is_tribute(brief)
+    if tribute:
+        th = themes.for_tribute(th)
+    mode = ""
 
-    sq = to_square(art_bytes)
-    if bk.is_white_bg(sq):
-        art = bk.cutout(sq)
-        mode = "cutout"
+    if th["kind"] == "scene":
+        canvas = to_square(art_bytes, pad_white=False).convert("RGBA")
+        if tribute:                       # drain the colour out of a tribute backdrop
+            canvas = Image.blend(canvas, canvas.convert("L").convert("RGBA"), 0.55)
+        ok = (_layout_scene_card(canvas, brief, th) if th.get("panel") == "left"
+              else _layout_scene_wash(canvas, brief, th))
+        mode = "scene"
     else:
-        # The model returned a full scene, not an isolated subject. Framing it as
-        # a photo card reads as deliberate; flood-cutting it would shred the edges.
-        art = bk.photo_card(_crop_active(sq))
-        mode = "card"
+        canvas = themes.background(v["theme"], tribute).convert("RGBA")
+        sq = to_square(art_bytes, pad_white=True)
+        if bk.is_white_bg(sq):
+            art, mode = bk.cutout(sq), "cutout"
+            if th["dark"]:
+                art = bk.defringe(art)
+        else:
+            art, mode = bk.photo_card(_crop_active(sq)), "card"
+        ok = _layout_hero(canvas, art, brief, th, mirror=(variant % 4 == 2))
 
-    name = layout_name(variant)
-    if name == "hero-right":
-        ok = _layout_hero(canvas, art, brief, pal, mirror=False)
-    elif name == "hero-left":
-        ok = _layout_hero(canvas, art, brief, pal, mirror=True)
-    elif name == "banner":
-        ok = _layout_banner(canvas, art, brief, pal)
-    else:
-        ok = _layout_typographic(canvas, art, brief, pal)
-
-    notes = {"shaping": bool(ok), "layout": name, "tribute": pal["tribute"], "art": mode}
+    notes = {"shaping": bool(ok), "theme": v["theme"], "mode": v["mode"],
+             "art": mode, "tribute": tribute}
     out = io.BytesIO()
     canvas.convert("RGB").save(out, "JPEG", quality=93, optimize=True)
     return out.getvalue(), notes

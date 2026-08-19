@@ -282,6 +282,22 @@ def photo_card(art: Image.Image, radius: int = 34) -> Image.Image:
     return im
 
 
+def defringe(im: Image.Image, px: int = 2) -> Image.Image:
+    """Erode a cutout's alpha slightly.
+
+    A flood cutout leaves a rim of near-white pixels from the original
+    background. Invisible on a cream canvas, an obvious halo on a dark one — so
+    the edge is pulled in before compositing onto dark themes.
+    """
+    a = im.split()[3]
+    for _ in range(max(1, px)):
+        a = a.filter(ImageFilter.MinFilter(3))
+    a = a.filter(ImageFilter.GaussianBlur(0.8))
+    out = im.copy()
+    out.putalpha(a)
+    return out
+
+
 def trim(im: Image.Image) -> Image.Image:
     bbox = im.split()[3].getbbox()
     return im.crop(bbox) if bbox else im
