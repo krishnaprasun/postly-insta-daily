@@ -8,10 +8,10 @@
 </header>
 
 {% if request.args.get('queued') %}
-<div class="banner b-warn"><span>⏳</span><span>Generating the post for
-  <b>{{ request.args.get('queued') }}</b> — takes a couple of minutes. This page refreshes
-  itself; the run appears below once it starts.</span></div>
-<meta http-equiv="refresh" content="15">
+<div class="banner b-warn"><span class="spinner"></span><b>Starting the post for
+  {{ request.args.get('queued') }}</b> — it appears in the list below within a few seconds,
+  then fills in as each design finishes.</div>
+<meta http-equiv="refresh" content="8">
 {% endif %}
 
 {% if ig.ready %}
@@ -24,7 +24,8 @@
     <input type="date" name="date" value="{{ today }}" style="width:auto">
     <label class="sub" style="display:flex;align-items:center;gap:6px">
       <input type="checkbox" name="force" value="1" style="width:auto"> replace existing</label>
-    <button class="btn pri">Generate now</button>
+    <button class="btn pri" onclick="this.classList.add('busy');
+            this.innerHTML='<span class=spinner></span>Starting…'">Generate now</button>
     <span class="spacer" style="flex:1"></span>
     <a class="btn sm" href="{{ url_for('preview') }}">Preview today's pick</a>
     <a class="btn sm" href="{{ url_for('healthz') }}">Health</a>
@@ -60,7 +61,7 @@
         {% else %}
           <form method="post" action="{{ url_for('generate') }}" style="display:inline">
             <input type="hidden" name="date" value="{{ d.date }}">
-            <button class="btn sm">Generate</button>
+            <button class="btn sm" onclick="this.classList.add('busy');this.textContent='Starting…'">Generate</button>
           </form>
         {% endif %}
       </td>
@@ -81,7 +82,9 @@
       <td>{{ r.n_ok }}/{{ r.n }}</td>
       <td>{% if r.run['status']=='posted' %}<span class="tag ok">posted</span>
           {% elif r.run['status']=='approved' %}<span class="tag ok">approved</span>
-          {% elif r.run['status']=='generating' %}<span class="tag warn">generating</span>
+          {% elif r.run['status']=='generating' %}
+            <span class="tag warn"><span class="spinner"
+              style="width:9px;height:9px;border-width:2px;margin-right:5px"></span>{{ r.n_ok }}/{{ r.run['expected'] or '?' }}</span>
           {% else %}<span class="tag">{{ r.run['status'] }}</span>{% endif %}</td>
       <td style="text-align:right"><a href="{{ url_for('review', token=r.run['review_token']) }}">Open →</a></td>
     </tr>

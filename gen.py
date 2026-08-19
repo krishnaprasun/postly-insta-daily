@@ -129,17 +129,34 @@ def one_variant(i: int, brief: Dict) -> Dict:
     return out
 
 
-def build_variants(brief: Dict, n: Optional[int] = None) -> List[Dict]:
-    """All variants for the day, in order. Failures come back as ok=False."""
-    n = n or config.VARIANT_COUNT
-    results: List[Dict] = [None] * n  # type: ignore[list-item]
-    with cf.ThreadPoolExecutor(max_workers=min(n, config.GEN_CONCURRENCY)) as ex:
-        futs = {ex.submit(one_variant, i, brief): i for i in range(n)}
+def build_variants(brief: Dict, n: Optional[int] = None,
+                   indices: Optional[List[int]] = None,
+                   on_result=None) -> List[Dict]:
+    """Build variants for one brief. Failures come back as ok=False.
+
+    `indices` picks WHICH variants to build. The index selects the theme, so a
+    quiet day splitting five slots across two briefs must pass explicit,
+    non-overlapping indices — otherwise both briefs render on themes 0 and 1 and
+    the day's options collide.
+
+    `on_result(result)` fires as each variant finishes, so the caller can save it
+    straight away. Returning only at the end meant the review page showed nothing
+    for two minutes and then everything at once.
+    """
+    idx = list(indices) if indices is not None else list(range(n or config.VARIANT_COUNT))
+    out: Dict[int, Dict] = {}
+    with cf.ThreadPoolExecutor(max_workers=max(1, min(len(idx), config.GEN_CONCURRENCY))) as ex:
+        futs = {ex.submit(one_variant, i, brief): i for i in idx}
         for f in cf.as_completed(futs):
             i = futs[f]
             try:
-                results[i] = f.result()
+                out[i] = f.result()
             except Exception as exc:  # noqa: BLE001
-                results[i] = {"index": i, "ok": False, "error": str(exc)[:300],
-                              "style": prompts.variant(i)["name"]}
-    return [r for r in results if r]
+                out[i] = {"index": i, "ok": False, "error": str(exc)[:300],
+                          "style": prompts.variant(i)["name"]}
+            if on_result:
+                try:
+                    on_result(out[i])
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[gen] on_result failed: {exc}", flush=True)
+    return [out[i] for i in idx if i in out]

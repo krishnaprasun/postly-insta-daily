@@ -44,6 +44,20 @@ def main() -> int:
     if not (lo <= today <= hi):
         fails.append(f"calendar does not cover today ({today})")
 
+    # Wiring guard. Two edits to gen.build_variants silently failed to apply and
+    # nothing caught it: the quiet-day path passes indices= and would have raised
+    # TypeError on roughly a third of all days, but no image-generating test ever
+    # ran that path.
+    print("\n— wiring —")
+    import inspect
+    import gen
+    params = inspect.signature(gen.build_variants).parameters
+    for need in ("indices", "on_result"):
+        ok = need in params
+        print(f"  gen.build_variants({need}=) {'ok' if ok else 'MISSING'}")
+        if not ok:
+            fails.append(f"gen.build_variants is missing the {need} parameter")
+
     print("\n— known dates —")
     for d, expect in KNOWN.items():
         if not (lo <= d <= hi):

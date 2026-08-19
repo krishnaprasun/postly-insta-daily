@@ -32,10 +32,16 @@
   <div class="banner b-bad">This day was skipped — nothing will be posted.</div>
 {% endif %}
 
-{% if run['status'] == 'generating' or (not variants and run['status'] != 'failed') %}
-  <div class="banner b-warn"><b>Generating five variants for {{ run['occasion'] }}</b> — this
-    takes two to three minutes. The page refreshes itself; images appear below when they land.</div>
-  <meta http-equiv="refresh" content="12">
+{% set expected = run['expected'] or variants|length %}
+{% set busy = run['status'] == 'generating' or (not variants and run['status'] != 'failed') %}
+{% if busy %}
+  <div class="banner b-warn">
+    <span class="spinner"></span><b>Creating your designs…</b>
+    {{ variants|length }} of {{ expected }} ready. This takes two to three minutes —
+    they appear below as they finish. You don't need to refresh.
+    <div class="bar"><i style="width:{{ (variants|length / (expected or 1) * 100)|round|int }}%"></i></div>
+  </div>
+  <meta http-equiv="refresh" content="8">
 {% endif %}
 
 {% if alternates %}
@@ -63,9 +69,6 @@
 
 <div class="card">
   <h2>Pick one</h2>
-  {% if not variants %}
-    <div class="sub">Nothing to show yet — the artwork is still being generated.</div>
-  {% endif %}
   <div class="grid">
     {% for v in variants %}
       <div class="v {{ v['status'] }}">
@@ -100,6 +103,11 @@
         {% endif %}
       </div>
     {% endfor %}
+    {% if busy %}
+      {% for _ in range(expected - variants|length) %}
+        <div class="skel"><div class="ph"></div><div class="lbl">designing…</div></div>
+      {% endfor %}
+    {% endif %}
   </div>
 </div>
 

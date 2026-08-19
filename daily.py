@@ -103,27 +103,32 @@ def regenerate(run_id: int, occasion: dict, n: Optional[int] = None) -> dict:
                needs_check=1 if b.get("needs_human_check") else 0,
                check_reason=b.get("check_reason", ""))
 
-    ok = 0
-    for r in gen.build_variants(b, n=n):
-        if r.get("ok"):
-            fn = f"run{run_id}_v{r['index']}.jpg"
-            (config.IMAGE_DIR / fn).write_bytes(r["image"])
-            flags = []
-            if r.get("text_qa") is True:
-                flags.append("possible text in artwork")
-            if r.get("likeness_ok") is False:
-                flags.append("portrait may not look like the person")
-            db.add_variant(run_id, r["index"], r.get("style", ""), fn,
-                           text_qa=r.get("text_qa"), prompt=r.get("prompt", ""),
-                           flags="; ".join(flags))
-            ok += 1
-        else:
-            db.add_variant(run_id, r["index"], r.get("style", ""), "",
-                           error=r.get("error", "generation failed"))
+    db.set_run(run_id, expected=n or config.VARIANT_COUNT)
+    ok = sum(1 for r in gen.build_variants(
+        b, n=n, on_result=lambda rr: _save_variant(run_id, rr)) if r.get("ok"))
     db.set_run(run_id, status="failed" if ok == 0 else "pending",
                error="" if ok else "all variants failed")
     print(f"[daily] run {run_id} regenerated for {occasion.get('event')}: {ok} ok", flush=True)
     return {"ok": ok > 0, "variants": ok}
+
+
+def _save_variant(run_id: int, r: Dict, label: str = "") -> bool:
+    """Persist one finished variant immediately so the review page fills in live."""
+    style = (f"{label} · " if label else "") + str(r.get("style", ""))
+    if r.get("ok"):
+        fn = f"run{run_id}_v{r['index']}.jpg"
+        (config.IMAGE_DIR / fn).write_bytes(r["image"])
+        flags = []
+        if r.get("text_qa") is True:
+            flags.append("possible text in artwork")
+        if r.get("likeness_ok") is False:
+            flags.append("portrait may not look like the person")
+        db.add_variant(run_id, r["index"], style, fn, text_qa=r.get("text_qa"),
+                       prompt=r.get("prompt", ""), flags="; ".join(flags))
+        return True
+    db.add_variant(run_id, r["index"], style, "",
+                   error=r.get("error", "generation failed"), prompt=r.get("prompt", ""))
+    return False
 
 
 def run_for(date_iso: Optional[str] = None, force: bool = False,
@@ -166,9 +171,9 @@ def run_for(date_iso: Optional[str] = None, force: bool = False,
                                                     chosen=ev))
         # The run row exists minutes before its variants do. Without this the
         # review page renders an empty "Pick one" and looks broken.
-        db.set_run(run_id, status="generating")
-        print(f"[daily] run {run_id}: {date_iso} -> QUIET DAY, generic content", flush=True)
         total = n or config.VARIANT_COUNT
+        db.set_run(run_id, status="generating", expected=total)
+        print(f"[daily] run {run_id}: {date_iso} -> QUIET DAY, generic content", flush=True)
         # Split the slots across the generic briefs, giving each a distinct block
         # of variant indices so every slot still lands on its own theme.
         base, extra = divmod(total, len(briefs))
@@ -177,36 +182,22 @@ def run_for(date_iso: Optional[str] = None, force: bool = False,
             count = base + (1 if gi < extra else 0)
             idx = list(range(cursor, cursor + count))
             cursor += count
-            for r in gen.build_variants(gb, indices=idx):
+            label = gen_events[gi]["category"]
+            for r in gen.build_variants(
+                    gb, indices=idx,
+                    on_result=lambda rr, lb=label: _save_variant(run_id, rr, lb)):
                 r["brief"] = gb
-                r["style"] = f"{gen_events[gi]['category']} · {r['style']}"
                 results.append(r)
     else:
         b = brief_mod.build(ev)
         run_id = db.create_run(date_iso, ev, b,
                                alternates=_alt_list(sel.get("alternates", []), chosen=ev))
-        db.set_run(run_id, status="generating")
+        db.set_run(run_id, status="generating", expected=n or config.VARIANT_COUNT)
         print(f"[daily] run {run_id}: {date_iso} -> {ev.get('event')}"
               f" (+{len(sel.get('alternates', []))} alternates)", flush=True)
-        results = gen.build_variants(b, n=n)
-    ok = 0
-    for r in results:
-        if r.get("ok"):
-            fn = f"run{run_id}_v{r['index']}.jpg"
-            (config.IMAGE_DIR / fn).write_bytes(r["image"])
-            flags = []
-            if r.get("text_qa") is True:
-                flags.append("possible text in artwork")
-            if r.get("likeness_ok") is False:
-                flags.append("portrait may not look like the person")
-            db.add_variant(run_id, r["index"], r.get("style", ""), fn,
-                           text_qa=r.get("text_qa"), prompt=r.get("prompt", ""),
-                           flags="; ".join(flags))
-            ok += 1
-        else:
-            db.add_variant(run_id, r["index"], r.get("style", ""), "",
-                           error=r.get("error", "generation failed"),
-                           prompt=r.get("prompt", ""))
+        results = gen.build_variants(b, n=n,
+                                     on_result=lambda rr: _save_variant(run_id, rr))
+    ok = sum(1 for r in results if r.get("ok"))   # already persisted by _save_variant
 
     if ok == 0:
         db.set_run(run_id, status="failed", error="all variants failed to generate")

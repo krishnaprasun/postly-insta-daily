@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS run (
   status        TEXT NOT NULL DEFAULT 'pending',   -- pending|approved|posted|skipped|failed
   review_token  TEXT NOT NULL,
   needs_check   INTEGER NOT NULL DEFAULT 0,
+  expected      INTEGER NOT NULL DEFAULT 0,
   alternates_json TEXT NOT NULL DEFAULT '[]',
   caption_override TEXT NOT NULL DEFAULT '',
   check_reason  TEXT NOT NULL DEFAULT '',
@@ -82,6 +83,8 @@ def init() -> None:
             c.execute("ALTER TABLE run ADD COLUMN alternates_json TEXT NOT NULL DEFAULT '[]'")
         if "caption_override" not in rcols:
             c.execute("ALTER TABLE run ADD COLUMN caption_override TEXT NOT NULL DEFAULT ''")
+        if "expected" not in rcols:
+            c.execute("ALTER TABLE run ADD COLUMN expected INTEGER NOT NULL DEFAULT 0")
 
 
 def _now() -> int:
