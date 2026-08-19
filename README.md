@@ -200,6 +200,23 @@ Instagram fetches a **public URL** rather than a file upload, which is why
 `publisher.host()` puts the JPEG on the Postly CDN first. That part is already
 configured and working.
 
+## Deployed
+
+**https://postly-insta-daily.onrender.com** — admin index is basic-auth; the daily
+`/r/<token>` review link needs no login, so it opens on a phone.
+
+Two things about the current (free) instance:
+
+* **Auto-deploy does not fire on push.** The service was created from a public Git
+  URL with no webhook, so ship changes with
+  `POST https://api.render.com/v1/services/<id>/deploys`.
+* **A free instance sleeps**, so the 07:00 IST scheduler cannot be relied on and
+  the ephemeral state is wiped on wake. Generate from the admin page, or move to
+  a paid plan for the daily run to fire by itself.
+
+Never trigger a redeploy while a generation is running — it SIGTERMs the worker
+and the run dies part-way.
+
 ## Deploy
 
 Docker → Render (`render.yaml`). Needs a **persistent disk at `/data`** — the
