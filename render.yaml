@@ -6,10 +6,9 @@ services:
     # 07:00 IST scheduler, and free instances cannot mount a disk.
     plan: starter
     healthCheckPath: /healthz
-    disk:
-      name: data
-      mountPath: /data      # SQLite + generated JPEGs; must persist across deploys
-      sizeGB: 5
+    # No disk on purpose: images and run history are ephemeral. The day's post is
+    # reviewed and downloaded the same morning. A restart loses that day's images
+    # and the review link with them — regenerate from the admin page if that happens.
     envVars:
       # Generation
       - key: LITELLM_BASE_URL

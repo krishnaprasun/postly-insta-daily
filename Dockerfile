@@ -9,8 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # DEVANAGARI_FONT is deliberately unset: hinditext searches the font tree and
 # picks a bold Devanagari face, so differing package filenames still work.
-ENV PYTHONUNBUFFERED=1 \
-    DATA_DIR=/data
+# DATA_DIR is left at its in-image default: generated JPEGs and the run database
+# are EPHEMERAL by design. The post is reviewed and downloaded the same morning,
+# so nothing here needs to outlive the container.
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 COPY requirements.txt .
