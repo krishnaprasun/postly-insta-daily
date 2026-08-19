@@ -40,8 +40,15 @@ def _has_text(art: bytes) -> Optional[bool]:
 
 
 def _art(prompt: str, attempts: int = 2) -> Dict:
-    """Generate artwork, retrying once if the model drew text."""
+    """Generate artwork, retrying once if the model drew text.
+
+    If the text check still trips on the last attempt the artwork is returned
+    anyway, flagged. The check is a vision model and it false-positives on
+    ornamental motifs; dropping the variant outright would lose the whole day's
+    option over a maybe. The review page shows the flag so a human decides.
+    """
     last_err = None
+    last_art = None
     for a in range(attempts):
         try:
             p = prompt if a == 0 else (
@@ -49,20 +56,23 @@ def _art(prompt: str, attempts: int = 2) -> Dict:
                 "Produce the same artwork with ABSOLUTELY NO letters, words, numbers or "
                 "lettered logos anywhere in the frame.")
             art = llm.image_gen(prompts.SYSTEM_INSTRUCTION, p, timeout=config.GEN_TIMEOUT)
+            last_art = art
             has_text = _has_text(art)
             if has_text:
-                last_err = "model drew text"
+                last_err = "text check tripped"
                 continue
             return {"art": art, "text_qa": has_text, "retried": a > 0}
         except Exception as exc:  # noqa: BLE001
             last_err = str(exc)[:200]
+    if last_art is not None:
+        return {"art": last_art, "text_qa": True, "retried": True, "warn": last_err}
     return {"art": None, "error": last_err or "unknown"}
 
 
 def one_variant(i: int, brief: Dict) -> Dict:
     """Build variant i end to end."""
     name, direction = prompts.variant(i)
-    out = {"index": i, "style": name, "ok": False}
+    out = {"index": i, "style": f"{name} / {imaging.layout_name(i)}", "ok": False}
     try:
         prompt = prompts.build_prompt(brief, direction)
         out["prompt"] = prompt
@@ -70,8 +80,7 @@ def one_variant(i: int, brief: Dict) -> Dict:
         if not res.get("art"):
             out["error"] = res.get("error", "generation failed")
             return out
-        img, notes = imaging.compose(
-            res["art"], brief.get("headline_hi", ""), brief.get("subline_hi", ""))
+        img, notes = imaging.compose(res["art"], brief, i)
         if not notes.get("shaping"):
             # The whole design depends on the overlaid Hindi headline. Without
             # shaping we would ship bare artwork with no message on it, which

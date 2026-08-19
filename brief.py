@@ -33,6 +33,17 @@ TONE_RULES = """TONE RULES (these are not negotiable):
 Never use the word "Happy" or "शुभकामनाएं" for a tribute or remembrance occasion."""
 
 
+GENERIC_RULES = """
+THIS IS GENERIC DAILY CONTENT, not an event announcement. Phrase it as an everyday post:
+- Good morning: occasion_hi is "सुप्रभात", prefix_hi is EMPTY, and suffix_hi is a day-wish such as
+  "आपका दिन मंगलमय हो!" — never "की हार्दिक शुभकामनाएं" (you do not congratulate someone on a morning).
+- Weekday deity: occasion_hi is ONLY the deity's name in Hindi ("श्री गणेश", "हनुमान जी",
+  "शनि देव", "माँ लक्ष्मी"), prefix_hi is EMPTY or a short day word ("आज है"), and suffix_hi is a
+  blessing that grammatically follows that name — "की कृपा आप पर बनी रहे". Never put day words
+  like "शनिवार का आशीर्वाद" in occasion_hi: it will not join with the suffix.
+"""
+
+
 def _prompt(ev: Dict) -> str:
     warn = ""
     if ev.get("warnings"):
@@ -49,22 +60,48 @@ BACKGROUND NOTES: {ev.get('notes', '')[:400]}
 DEITY (if any): {ev.get('deity', '')}{warn}
 
 {TONE_RULES}
+{GENERIC_RULES if ev.get('_generic') else ''}
 
-The brand is a mainstream Indian consumer app. The post must feel like it belongs to a brand, not
-a forwarded greeting image. The artwork will carry NO text — a designer overlays the headline
-afterwards, so the headline must be SHORT.
+The post is built from a FIXED brand template. You are filling in its slots, not designing a
+layout. The template stacks, centred:
+
+    <prefix>            small          e.g.  आप सभी को
+    <occasion>          HUGE, two-tone e.g.  नाग पंचमी
+    <suffix>            medium         e.g.  की हार्दिक शुभकामनाएं!
+    ---- ornament ----
+    <blessing>          small, 1-2 lines
+
+The artwork is generated separately as a cutout on white, so describe a SINGLE SUBJECT, not a
+scene and not a layout.
 
 Return RAW JSON with exactly these keys:
 {{
   "occasion_en": "<occasion name in English>",
-  "headline_hi": "<the ONE line overlaid on the image, HINDI/Devanagari, MAX 6 words. This is the
-                   hero text — make it land.>",
-  "subline_hi": "<optional smaller second line in Hindi, MAX 8 words, or empty string>",
+  "occasion_hi": "<ONLY the name, in HINDI, 1-3 words. e.g. 'नाग पंचमी', 'रक्षा बंधन',
+                   'जय श्री गणेश'. For a person, their NAME in Devanagari. It must NOT contain
+                   blessing or greeting words — no कृपा, no शुभकामनाएं, no नमन, no आशीर्वाद —
+                   those belong in suffix_hi, and repeating them reads as a duplication
+                   ('शनिदेव कृपा' + 'की कृपा आप पर बनी रहे').>",
+  "prefix_hi": "<short lead-in line, usually 'आप सभी को'. EMPTY STRING for a tribute.>",
+  "suffix_hi": "<the line that follows the name. Festival: 'की हार्दिक शुभकामनाएं!'.
+                 Jayanti of someone deceased: 'जयंती पर शत्-शत् नमन'.
+                 Punyatithi: 'पुण्यतिथि पर विनम्र श्रद्धांजलि'. MAX 5 words.
+
+                 HARD RULE: occasion_hi and suffix_hi are printed one under the other and are
+                 READ AS ONE SENTENCE. They must be grammatical when joined.
+                   good:  'रक्षा बंधन' + 'की हार्दिक शुभकामनाएं!'
+                   good:  'शनि देव'    + 'की कृपा आप पर बनी रहे'
+                   BAD:   'शनिवार का आशीर्वाद' + 'की कृपा आप पर बनी रहे'  (ungrammatical)
+                   BAD:   'सुप्रभात' + 'की हार्दिक शुभकामनाएं!'            (nonsense)
+                 Read the two aloud together before answering. If they do not join cleanly,
+                 change occasion_hi to a plain name so that they do.>",
+  "blessing_hi": "<one warm closing line in Hindi, MAX 14 words. For a tribute, a line of
+                   remembrance instead — never a blessing for prosperity.>",
   "context": "<one line: what this occasion actually marks>",
   "mood": "<3-6 adjectives for the artwork's emotional register>",
-  "visual_concept": "<2-3 sentences describing the image: subject, setting, action, focal point.
-                      Concrete and visual. No text in the image.>",
-  "motifs": "<comma-separated concrete objects/symbols to include>",
+  "visual_concept": "<2-3 sentences describing ONE subject to draw, isolated on white:
+                      what it is, its materials, how it is lit. Concrete and visual.>",
+  "motifs": "<comma-separated concrete objects/symbols in that subject>",
   "palette": "<the colour direction in a short phrase>",
   "avoid": "<what must not appear — wrong iconography, clichés, anything disrespectful>",
   "caption_hi": "<Instagram caption in HINDI, 2-4 short lines, warm and human, may use 1-3 emoji.
@@ -72,7 +109,7 @@ Return RAW JSON with exactly these keys:
   "caption_en": "<the English caption, 2-4 short lines. Not a literal translation — write it
                   natively for an English-reading Indian audience. May use 1-3 emoji. No hashtags.>",
   "hashtags": ["<8-12 relevant hashtags, mixed Hindi-transliterated and English, no # symbol>"],
-  "tone": "<echo the tone you wrote for: festive|devotional|patriotic|remembrance|tribute|awareness|love>",
+  "tone": "<one of: festive|devotional|patriotic|remembrance|tribute|awareness|love>",
   "needs_human_check": <true if anything about this occasion is uncertain or sensitive, else false>,
   "check_reason": "<why, if needs_human_check is true, else empty string>"
 }}"""
@@ -84,8 +121,10 @@ def _fallback(ev: Dict) -> Dict:
     tribute = ev.get("tone") == "tribute_somber" or "punyatithi" in name.lower()
     return {
         "occasion_en": name,
-        "headline_hi": "विनम्र श्रद्धांजलि" if tribute else "हार्दिक शुभकामनाएं",
-        "subline_hi": "",
+        "occasion_hi": "",
+        "prefix_hi": "" if tribute else "आप सभी को",
+        "suffix_hi": "विनम्र श्रद्धांजलि" if tribute else "की हार्दिक शुभकामनाएं!",
+        "blessing_hi": "",
         "context": ev.get("notes", "")[:160],
         "mood": "restrained, respectful" if tribute else "warm, festive",
         "visual_concept": f"A respectful symbolic composition for {name}.",
@@ -121,14 +160,25 @@ def build(ev: Dict) -> Dict:
         tags = [t.strip() for t in tags.replace("#", "").split() if t.strip()]
     b["hashtags"] = [str(t).lstrip("#").strip()[:40] for t in tags if str(t).strip()][:12]
 
-    for k in ("headline_hi", "subline_hi", "caption_hi", "caption_en", "occasion_en"):
+    for k in ("occasion_hi", "prefix_hi", "suffix_hi", "blessing_hi",
+              "caption_hi", "caption_en", "occasion_en"):
         b[k] = str(b.get(k, "")).strip()
     b["needs_human_check"] = bool(b.get("needs_human_check")) or bool(ev.get("warnings"))
     if ev.get("warnings") and not b.get("check_reason"):
         b["check_reason"] = " | ".join(ev["warnings"])
 
-    if not b["headline_hi"]:
-        b["headline_hi"] = _fallback(ev)["headline_hi"]
+    # Safety net for the one-sentence rule: the model still occasionally ends the
+    # name with the same word the suffix opens with ("गांधी जयंती" + "जयंती पर नमन").
+    occ_words = b["occasion_hi"].split()
+    suf_words = b["suffix_hi"].split()
+    if len(occ_words) > 1 and suf_words and occ_words[-1] == suf_words[0]:
+        b["occasion_hi"] = " ".join(occ_words[:-1])
+
+    # occasion_hi is the hero of the template — without it there is no post
+    if not b["occasion_hi"]:
+        b["occasion_hi"] = (ev.get("event", "") or "").split("(")[0].strip()
+    if not b["suffix_hi"]:
+        b["suffix_hi"] = _fallback(ev)["suffix_hi"]
     return b
 
 

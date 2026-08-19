@@ -27,15 +27,57 @@ So the split in `events.py` is deliberate and should not be undone:
 Coverage today is **2026-05-01 → 2028-04-30**. Past the end, runs fail loudly
 rather than guessing — refresh with `python refresh_calendar.py`.
 
-## Why the model draws no text
+### What gets picked, and what doesn't
 
-Gemini garbles Devanagari conjuncts often enough to matter. So the image model
-produces **artwork only**, with a deliberately calm bottom band, and `imaging.py`
-overlays the headline using proper CoreText/Noto shaping. Text is correct 100% of
-the time and consistent across the grid.
+Film and TV anniversaries are dropped outright. Person-based occasions are
+restricted to **Indian leaders** — the calendar's `National Icon` and `Politics`
+categories only, which cuts ~10,000 long-tail Figure rows (Padma Shri awardees,
+actors, sportspeople, foreign luminaries) that exist for in-app status content.
+
+The `Politics` category still mixes Indian statesmen with foreign politicians
+(Mike Pence, João de Castro) and carries no marker separating them, so
+`events.verify_leaders()` asks the model one narrow question per person — Indian?
+deceased? a leader? — and drops the rest. That is a checkable fact about a named
+person, not a date question.
+
+### Quiet days
+
+Roughly a third of dates carry nothing a mainstream audience marks. Those days
+get honest generic content instead of a dressed-up obscure anniversary: half the
+variants are the **weekday's deity** (Somwar–Shiv, Mangalwar–Hanuman, Budhwar–
+Ganesh …) and half are a **good-morning** post, so there is still a real choice.
+The run is flagged, and **Skip today** is one click.
+
+## The template, and why the model draws no text
+
+The post is a fixed Postly brand template — cream ground, logo lockup, two-tone
+green/gold Devanagari headline, ornament, blessing line, app-promo footer — built
+in `brandkit.py` + `imaging.py` to match the reference creatives.
+
+The model supplies exactly **one** thing: a subject isolated on white. Everything
+else is drawn deterministically. Two reasons:
+
+* Gemini garbles Devanagari conjuncts often enough to matter. All text is shaped
+  by CoreText (macOS) or Noto+raqm (Linux), so it is correct 100% of the time.
+* Letting the model compose the whole post produced good images that looked like
+  someone else's brand. The references are a specific, repeatable template.
+
+The headline and the line under it are printed together and **read as one
+sentence** (`रक्षा बंधन` + `की हार्दिक शुभकामनाएं!`), so `brief.py` enforces that
+they join grammatically, and strips the stutter when a name already ends in the
+suffix's first word (`गांधी जयंती` + `जयंती पर नमन`).
+
+**Artwork treatment adapts.** If the model honoured the white background, the
+subject is flood-cut out and floated on the canvas. If it returned a full scene
+instead — common for contextual subjects like a cup of chai — cutting would tear
+ragged holes, so it is framed as a rounded photo card instead. `notes.art` records
+which happened.
+
+Tributes switch the whole palette to muted navy/grey: no green, no gold, no
+festive ornament.
 
 If shaping isn't available on the host, variants **fail** rather than shipping
-bare artwork with no message on it. Check `/healthz` → `devanagari_shaping`.
+artwork with no message on it. Check `/healthz` → `devanagari_shaping`.
 
 ## Setup
 

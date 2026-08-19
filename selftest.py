@@ -67,6 +67,13 @@ def main() -> int:
             print(f"  {d}  (nothing)")
             continue
         tags = []
+        if c.get("type") in ("Film Anniversary", "TV Show Anniversary"):
+            tags.append("ANNIVERSARY")
+            fails.append(f"{d}: chose a film/TV anniversary ({c['event']})")
+        if c.get("type") == "Figure" and not any(
+                k in (c.get("category") or "") for k in events.LEADER_CATEGORIES):
+            tags.append("NON-LEADER")
+            fails.append(f"{d}: chose a non-leader figure ({c['event']})")
         if events.is_blocked(c):
             tags.append("BLOCKED")
             fails.append(f"{d}: chose a row needing alive-verification ({c['event']})")
@@ -74,7 +81,7 @@ def main() -> int:
             tags.append("INTL")
             fails.append(f"{d}: chose a foreign figure ({c['event']})")
         if sel.get("quiet_day"):
-            tags.append("quiet")
+            tags.append("quiet->generic")
         print(f"  {d}  {c['event'][:44]:46} reach={c.get('reach')} {' '.join(tags)}")
 
     print()

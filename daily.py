@@ -15,6 +15,7 @@ import config
 import db
 import events
 import gen
+import generic
 import notify
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
@@ -49,16 +50,38 @@ def run_for(date_iso: Optional[str] = None, force: bool = False,
         return {"ok": False, "error": msg, "run_id": run_id}
 
     ev = sel["chosen"]
-    b = brief_mod.build(ev)
-    if sel.get("quiet_day"):
+    quiet = bool(sel.get("quiet_day") or sel.get("used_fallback"))
+
+    if quiet:
+        # Nothing worth announcing today. Offer generic content the brand already
+        # runs on quiet days — the weekday's deity and a good-morning post — half
+        # the variants each, so there is still a real choice to make.
+        gen_events = generic.events_for(date_iso)
+        briefs = [brief_mod.build(g) for g in gen_events]
+        ev = dict(gen_events[0])
+        ev["quiet_alternatives"] = [g["event"] for g in gen_events]
+        b = dict(briefs[0])
         b["needs_human_check"] = True
-        b["check_reason"] = ((b.get("check_reason", "") + " | ") if b.get("check_reason") else "") + \
-            "Quiet day — no widely-marked occasion on this date. Consider skipping."
-
-    run_id = db.create_run(date_iso, ev, b)
-    print(f"[daily] run {run_id}: {date_iso} -> {ev.get('event')}", flush=True)
-
-    results = gen.build_variants(b, n=n)
+        b["check_reason"] = ("No notable occasion on this date — showing generic content "
+                             "(weekday deity + good morning). Skip the day if you'd rather "
+                             "post nothing.")
+        run_id = db.create_run(date_iso, ev, b)
+        print(f"[daily] run {run_id}: {date_iso} -> QUIET DAY, generic content", flush=True)
+        total = n or config.VARIANT_COUNT
+        per = max(1, total // len(briefs))
+        results = []
+        for gi, gb in enumerate(briefs):
+            got = gen.build_variants(gb, n=per)
+            for r in got:
+                r["index"] = gi * per + r["index"]
+                r["brief"] = gb
+                r["style"] = f"{gen_events[gi]['category']} · {r['style']}"
+            results.extend(got)
+    else:
+        b = brief_mod.build(ev)
+        run_id = db.create_run(date_iso, ev, b)
+        print(f"[daily] run {run_id}: {date_iso} -> {ev.get('event')}", flush=True)
+        results = gen.build_variants(b, n=n)
     ok = 0
     for r in results:
         if r.get("ok"):

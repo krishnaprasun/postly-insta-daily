@@ -39,6 +39,12 @@ PRIORITY_REACH = {"P1": 9, "P2": 6, "P3": 4}
 # figures) that exist for in-app status content, not for the brand handle.
 SKIP_TYPES = {"Film Anniversary", "TV Show Anniversary"}
 
+# Person-based occasions are restricted to INDIAN LEADERS by request: national
+# icons, freedom fighters and statesmen. The calendar carries ~10,000 other
+# Figure rows — Padma Shri awardees, actors, sportspeople, foreign luminaries —
+# which are in-app status material, not brand-handle material.
+LEADER_CATEGORIES = ("National Icon", "Politics")
+
 # Weekday devotionals (Budhwar-Ganesha, Shaniwar-Shani...) recur every week and the
 # calendar marks them "In-app push only". They are a legitimate fallback for a
 # genuinely empty day, but must never outrank a real occasion, so they are held
@@ -56,7 +62,13 @@ def _row_ok(r: Dict[str, str]) -> bool:
     if r.get("Type", "") in SKIP_TYPES:
         return False
     ev = r.get("Event", "")
-    return not any(p.search(ev) for p in SKIP_PATTERNS)
+    if any(p.search(ev) for p in SKIP_PATTERNS):
+        return False
+    if r.get("Type", "") == "Figure":
+        cat = r.get("Category", "") or ""
+        if "(Intl)" in cat or not any(k in cat for k in LEADER_CATEGORIES):
+            return False
+    return True
 
 
 def is_international(c: Dict) -> bool:
@@ -241,12 +253,68 @@ def rank(date_iso: str, cands: List[Dict], top_n: int = 0) -> List[Dict]:
         return _curated(cands, top_n)
 
 
+LEADER_SYS = ("You answer with RAW JSON only — no markdown, no commentary. You know Indian "
+              "history and politics well.")
+
+
+def verify_leaders(cands: List[Dict]) -> List[Dict]:
+    """Drop person-rows that are not deceased Indian national figures.
+
+    The calendar's "Politics" category mixes Indian statesmen with foreign
+    politicians (Mike Pence, Joao de Castro) and carries no marker separating
+    them, so this is the one place a model judgement is unavoidable. It is a
+    narrow, checkable question about a named person — not a date question.
+    On failure the rows are kept and flagged rather than silently dropped.
+    """
+    figures = [c for c in cands if c.get("type") == "Figure"]
+    if not figures or not getattr(llm, "ENABLED", False):
+        return cands
+
+    listing = "\n".join(f'{i}. {c["event"]}' for i, c in enumerate(figures))
+    prompt = (
+        "For each person below, answer two things:\n"
+        f"{listing}\n\n"
+        'Return a JSON array of {"index": <n>, "indian": <bool>, "deceased": <bool>, '
+        '"leader": <bool>}.\n'
+        '"indian"   = an Indian national figure (freedom fighter, statesman, President, PM, '
+        "Chief Minister, major party leader, social reformer). Foreign politicians are false.\n"
+        '"deceased" = no longer living.\n'
+        '"leader"   = primarily known as a political or national leader, not as an actor, '
+        "singer, sportsperson, scientist or businessperson.\n"
+        "If you are unsure about a person, set all three false."
+    )
+    try:
+        raw = llm.text(prompt, system=LEADER_SYS, timeout=60)
+        m = re.search(r"\[.*\]", raw, re.S)
+        if not m:
+            return cands
+        verdicts = {}
+        for it in json.loads(m.group(0)):
+            try:
+                verdicts[int(it.get("index"))] = it
+            except (TypeError, ValueError):
+                continue
+    except Exception as exc:  # noqa: BLE001
+        print(f"[events] leader check failed, keeping rows: {exc}", flush=True)
+        return cands
+
+    drop = set()
+    for i, c in enumerate(figures):
+        v = verdicts.get(i)
+        if not v:
+            continue
+        if not (v.get("indian") and v.get("deceased") and v.get("leader")):
+            drop.add(id(c))
+    return [c for c in cands if id(c) not in drop]
+
+
 def pick(date_iso: str) -> Dict:
     """The day's chosen occasion + the alternates, for the review page."""
     lo, hi = coverage()
     out_of_range = bool(lo and hi and not (lo <= date_iso <= hi))
 
     real, fallback = candidates(date_iso)
+    real = verify_leaders(real)
     ranked = rank(date_iso, real)
 
     used_fallback = False
