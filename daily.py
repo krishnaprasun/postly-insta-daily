@@ -164,6 +164,9 @@ def run_for(date_iso: Optional[str] = None, force: bool = False,
         run_id = db.create_run(date_iso, ev, b,
                                alternates=_alt_list(gen_events[1:] + sel.get("alternates", []),
                                                     chosen=ev))
+        # The run row exists minutes before its variants do. Without this the
+        # review page renders an empty "Pick one" and looks broken.
+        db.set_run(run_id, status="generating")
         print(f"[daily] run {run_id}: {date_iso} -> QUIET DAY, generic content", flush=True)
         total = n or config.VARIANT_COUNT
         # Split the slots across the generic briefs, giving each a distinct block
@@ -182,6 +185,7 @@ def run_for(date_iso: Optional[str] = None, force: bool = False,
         b = brief_mod.build(ev)
         run_id = db.create_run(date_iso, ev, b,
                                alternates=_alt_list(sel.get("alternates", []), chosen=ev))
+        db.set_run(run_id, status="generating")
         print(f"[daily] run {run_id}: {date_iso} -> {ev.get('event')}"
               f" (+{len(sel.get('alternates', []))} alternates)", flush=True)
         results = gen.build_variants(b, n=n)
@@ -207,6 +211,7 @@ def run_for(date_iso: Optional[str] = None, force: bool = False,
     if ok == 0:
         db.set_run(run_id, status="failed", error="all variants failed to generate")
         return {"ok": False, "error": "all variants failed", "run_id": run_id}
+    db.set_run(run_id, status="pending", error="")
 
     run = dict(db.get_run(run_id))
     n_res = notify.send(run) if notify_user else {"url": notify.review_url(run["review_token"])}

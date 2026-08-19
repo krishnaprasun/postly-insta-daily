@@ -32,9 +32,9 @@
   <div class="banner b-bad">This day was skipped — nothing will be posted.</div>
 {% endif %}
 
-{% if run['status'] == 'generating' %}
-  <div class="banner b-warn">Generating variants for <b>{{ run['occasion'] }}</b> — this takes a
-    minute or two. This page refreshes itself.</div>
+{% if run['status'] == 'generating' or (not variants and run['status'] != 'failed') %}
+  <div class="banner b-warn"><b>Generating five variants for {{ run['occasion'] }}</b> — this
+    takes two to three minutes. The page refreshes itself; images appear below when they land.</div>
   <meta http-equiv="refresh" content="12">
 {% endif %}
 
@@ -63,6 +63,9 @@
 
 <div class="card">
   <h2>Pick one</h2>
+  {% if not variants %}
+    <div class="sub">Nothing to show yet — the artwork is still being generated.</div>
+  {% endif %}
   <div class="grid">
     {% for v in variants %}
       <div class="v {{ v['status'] }}">
