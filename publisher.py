@@ -68,6 +68,17 @@ def _graph(path: str) -> str:
     return f"https://graph.facebook.com/{config.IG_GRAPH_VERSION}/{path}"
 
 
+def public_image_url(variant_id: int) -> str:
+    """The URL handed to Meta for a variant, served by this service.
+
+    Not the Postly CDN: it re-encodes uploads to WEBP and hands back a URL that
+    expires in ~6 hours. Instagram's Content Publishing API accepts JPEG only,
+    so a CDN URL fails at container creation. This service already serves the
+    original JPEG at /img/<id> with the right mime type and no expiry.
+    """
+    return f"{config.PUBLIC_BASE_URL}/img/{variant_id}"
+
+
 def preflight() -> Dict:
     """What is / isn't ready for auto-posting. Never raises — the UI shows this."""
     missing: List[str] = []
@@ -77,11 +88,22 @@ def preflight() -> Dict:
         missing.append("IG_USER_ID (Instagram Business account id) not set")
     if not config.IG_ACCESS_TOKEN:
         missing.append("IG_ACCESS_TOKEN (long-lived page token) not set")
-    cdn_ok = bool(config.POSTLY_CDN_URL and config.POSTLY_CDN_ACCESS_TOKEN)
-    if not cdn_ok:
-        missing.append("Postly CDN not configured (needed to give Meta a public image URL)")
+    base = config.PUBLIC_BASE_URL
+    if config.IG_IMAGE_SOURCE == "self":
+        # Meta fetches the image from the open internet, so a localhost or
+        # http:// base cannot work however valid the token is.
+        if "localhost" in base or "127.0.0.1" in base:
+            missing.append(f"PUBLIC_BASE_URL is {base} — Meta cannot fetch images from localhost; "
+                           "set it to the deployed https:// URL")
+        elif not base.startswith("https://"):
+            missing.append(f"PUBLIC_BASE_URL must be https:// for Meta to fetch images (got {base})")
+    else:
+        if not (config.POSTLY_CDN_URL and config.POSTLY_CDN_ACCESS_TOKEN):
+            missing.append("Postly CDN not configured, and IG_IMAGE_SOURCE=cdn")
 
-    out = {"ready": not missing, "missing": missing, "cdn_ready": cdn_ok, "account": None}
+    cdn_ok = bool(config.POSTLY_CDN_URL and config.POSTLY_CDN_ACCESS_TOKEN)
+    out = {"ready": not missing, "missing": missing, "cdn_ready": cdn_ok,
+           "image_source": config.IG_IMAGE_SOURCE, "account": None}
     if not missing:
         try:
             r = requests.get(_graph(config.IG_USER_ID),

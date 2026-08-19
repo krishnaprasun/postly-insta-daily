@@ -75,6 +75,11 @@ IG_USER_ID = os.environ.get("IG_USER_ID", "")                 # IG Business acco
 IG_ACCESS_TOKEN = os.environ.get("IG_ACCESS_TOKEN", "")
 IG_GRAPH_VERSION = os.environ.get("IG_GRAPH_VERSION", "v21.0")
 
+# Where Meta fetches the image from: "self" serves it straight off this service
+# (correct JPEG mime, no expiry), "cdn" round-trips it through the Postly CDN.
+# Default is "self" — the CDN re-encodes uploads to WEBP, which Instagram rejects.
+IG_IMAGE_SOURCE = os.environ.get("IG_IMAGE_SOURCE", "self").strip().lower()
+
 # ── Public image hosting (Meta requires a public URL to publish) ────────────
 # Reuses the Postly CDN the other pipelines already upload to.
 POSTLY_CDN_URL = os.environ.get("POSTLY_CDN_URL", "")

@@ -218,9 +218,14 @@ def post_run(run_id):
         return redirect(url_for("review", token=run["review_token"], err="ig-not-ready"))
 
     try:
-        img_bytes = (config.IMAGE_DIR / approved["filename"]).read_bytes()
-        res = publisher.post_image(img_bytes, caption,
-                                   filename=f"postly_{run_id}_{approved['idx']}.jpg")
+        if config.IG_IMAGE_SOURCE == "self":
+            image_url = publisher.public_image_url(approved["id"])
+            res = publisher.publish(image_url, caption)
+            res["image_url"] = image_url
+        else:
+            img_bytes = (config.IMAGE_DIR / approved["filename"]).read_bytes()
+            res = publisher.post_image(img_bytes, caption,
+                                       filename=f"postly_{run_id}_{approved['idx']}.jpg")
         db.add_publish(run_id, approved["id"], lang, caption, status="posted",
                        ig_media_id=res.get("media_id", ""), permalink=res.get("permalink", ""))
         db.set_run(run_id, status="posted")
