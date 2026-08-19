@@ -30,6 +30,102 @@ def target_date() -> str:
     return d.isoformat()
 
 
+def _alt_list(cands, chosen=None) -> list:
+    """The other occasions found for a date, deduplicated, for the picker.
+
+    The calendar carries the same occasion under more than one wording — 31 Oct
+    lists both "Vallabhbhai Patel Jayanti" and "Sardar Vallabhbhai Patel Jayanti
+    / Rashtriya Ekta Diwas" — so near-duplicates are collapsed by their
+    significant words rather than offered twice.
+    """
+    def _key(name):
+        return frozenset(w.lower().strip(".,/") for w in name.split() if len(w) > 3)
+
+    out, seen = [], set()
+    if chosen and chosen.get("event"):
+        # seed with the CHOSEN occasion, or its own near-duplicate is offered as
+        # an alternate ("Vallabhbhai Patel Jayanti" vs "Sardar Vallabhbhai Patel
+        # Jayanti / Rashtriya Ekta Diwas")
+        seen.add(_key(chosen["event"]))
+    for c in cands or []:
+        name = (c.get("event") or "").strip()
+        if not name:
+            continue
+        key = _key(name)
+        if not key:
+            continue
+        if any(len(key & s) >= max(2, min(len(key), len(s)) - 1) for s in seen):
+            continue
+        seen.add(key)
+        out.append({k: c.get(k) for k in
+                    ("event", "type", "category", "priority", "tier", "tone", "occasion",
+                     "audience", "hook", "notes", "deity", "sensitivity", "warnings",
+                     "reach", "why", "date")})
+        if len(out) >= 7:
+            break
+    return out
+
+
+def regenerate(run_id: int, occasion: dict, n: Optional[int] = None) -> dict:
+    """Rebuild a run's variants around a DIFFERENT occasion, in place.
+
+    Used when the picker switches the day's subject. The review link, and any
+    caption already written, stay valid — only the artwork and brief change.
+    """
+    db.init()
+    run = db.get_run(run_id)
+    if not run:
+        return {"ok": False, "error": "no such run"}
+
+    db.set_run(run_id, status="generating", error="")
+    for fn in db.clear_variants(run_id):
+        try:
+            (config.IMAGE_DIR / fn).unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+    b = brief_mod.build(occasion)
+
+    # Rebuild the picker list around the NEW subject: the occasion just switched
+    # away from becomes an option, and the one now in use drops off — otherwise
+    # it appears twice, as both the current choice and an alternate.
+    try:
+        prev = json.loads(run["occasion_json"] or "{}")
+        alts = json.loads(run["alternates_json"] or "[]")
+    except Exception:  # noqa: BLE001
+        prev, alts = {}, []
+    new_alts = _alt_list(([prev] if prev.get("event") else []) + alts, chosen=occasion)
+
+    db.set_run(run_id, occasion=occasion.get("event", ""),
+               occasion_json=json.dumps(occasion, ensure_ascii=False),
+               brief_json=json.dumps(b, ensure_ascii=False),
+               alternates_json=json.dumps(new_alts, ensure_ascii=False),
+               needs_check=1 if b.get("needs_human_check") else 0,
+               check_reason=b.get("check_reason", ""))
+
+    ok = 0
+    for r in gen.build_variants(b, n=n):
+        if r.get("ok"):
+            fn = f"run{run_id}_v{r['index']}.jpg"
+            (config.IMAGE_DIR / fn).write_bytes(r["image"])
+            flags = []
+            if r.get("text_qa") is True:
+                flags.append("possible text in artwork")
+            if r.get("likeness_ok") is False:
+                flags.append("portrait may not look like the person")
+            db.add_variant(run_id, r["index"], r.get("style", ""), fn,
+                           text_qa=r.get("text_qa"), prompt=r.get("prompt", ""),
+                           flags="; ".join(flags))
+            ok += 1
+        else:
+            db.add_variant(run_id, r["index"], r.get("style", ""), "",
+                           error=r.get("error", "generation failed"))
+    db.set_run(run_id, status="failed" if ok == 0 else "pending",
+               error="" if ok else "all variants failed")
+    print(f"[daily] run {run_id} regenerated for {occasion.get('event')}: {ok} ok", flush=True)
+    return {"ok": ok > 0, "variants": ok}
+
+
 def run_for(date_iso: Optional[str] = None, force: bool = False,
             notify_user: bool = True, n: Optional[int] = None) -> Dict:
     """Generate the day's post. Returns a summary dict."""
@@ -65,7 +161,9 @@ def run_for(date_iso: Optional[str] = None, force: bool = False,
         b["check_reason"] = ("No notable occasion on this date — showing generic content "
                              "(weekday deity + good morning). Skip the day if you'd rather "
                              "post nothing.")
-        run_id = db.create_run(date_iso, ev, b)
+        run_id = db.create_run(date_iso, ev, b,
+                               alternates=_alt_list(gen_events[1:] + sel.get("alternates", []),
+                                                    chosen=ev))
         print(f"[daily] run {run_id}: {date_iso} -> QUIET DAY, generic content", flush=True)
         total = n or config.VARIANT_COUNT
         # Split the slots across the generic briefs, giving each a distinct block
@@ -82,8 +180,10 @@ def run_for(date_iso: Optional[str] = None, force: bool = False,
                 results.append(r)
     else:
         b = brief_mod.build(ev)
-        run_id = db.create_run(date_iso, ev, b)
-        print(f"[daily] run {run_id}: {date_iso} -> {ev.get('event')}", flush=True)
+        run_id = db.create_run(date_iso, ev, b,
+                               alternates=_alt_list(sel.get("alternates", []), chosen=ev))
+        print(f"[daily] run {run_id}: {date_iso} -> {ev.get('event')}"
+              f" (+{len(sel.get('alternates', []))} alternates)", flush=True)
         results = gen.build_variants(b, n=n)
     ok = 0
     for r in results:

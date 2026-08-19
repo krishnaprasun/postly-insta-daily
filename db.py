@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS run (
   status        TEXT NOT NULL DEFAULT 'pending',   -- pending|approved|posted|skipped|failed
   review_token  TEXT NOT NULL,
   needs_check   INTEGER NOT NULL DEFAULT 0,
+  alternates_json TEXT NOT NULL DEFAULT '[]',
+  caption_override TEXT NOT NULL DEFAULT '',
   check_reason  TEXT NOT NULL DEFAULT '',
   error         TEXT NOT NULL DEFAULT '',
   created_at    INTEGER NOT NULL,
@@ -75,6 +77,11 @@ def init() -> None:
         cols = {r["name"] for r in c.execute("PRAGMA table_info(variant)")}
         if "flags" not in cols:
             c.execute("ALTER TABLE variant ADD COLUMN flags TEXT NOT NULL DEFAULT ''")
+        rcols = {r["name"] for r in c.execute("PRAGMA table_info(run)")}
+        if "alternates_json" not in rcols:
+            c.execute("ALTER TABLE run ADD COLUMN alternates_json TEXT NOT NULL DEFAULT '[]'")
+        if "caption_override" not in rcols:
+            c.execute("ALTER TABLE run ADD COLUMN caption_override TEXT NOT NULL DEFAULT ''")
 
 
 def _now() -> int:
@@ -82,19 +89,30 @@ def _now() -> int:
 
 
 # ── runs ────────────────────────────────────────────────────────────────────
-def create_run(date_iso: str, occasion: Dict, brief: Dict) -> int:
+def create_run(date_iso: str, occasion: Dict, brief: Dict, alternates=None) -> int:
     with conn() as c:
         cur = c.execute(
             "INSERT INTO run (date_iso, occasion, occasion_json, brief_json, review_token,"
-            " needs_check, check_reason, created_at, updated_at)"
-            " VALUES (?,?,?,?,?,?,?,?,?)",
+            " needs_check, check_reason, alternates_json, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
             (date_iso, (occasion or {}).get("event", ""),
              json.dumps(occasion or {}, ensure_ascii=False),
              json.dumps(brief or {}, ensure_ascii=False),
              secrets.token_urlsafe(16),
              1 if (brief or {}).get("needs_human_check") else 0,
-             (brief or {}).get("check_reason", ""), _now(), _now()))
+             (brief or {}).get("check_reason", ""),
+             json.dumps(alternates or [], ensure_ascii=False), _now(), _now()))
         return cur.lastrowid
+
+
+def clear_variants(run_id: int) -> List[str]:
+    """Drop a run's variants; returns the filenames so the caller can unlink them."""
+    with conn() as c:
+        files = [r["filename"] for r in
+                 c.execute("SELECT filename FROM variant WHERE run_id=?", (run_id,)).fetchall()
+                 if r["filename"]]
+        c.execute("DELETE FROM variant WHERE run_id=?", (run_id,))
+    return files
 
 
 def set_run(run_id: int, **fields) -> None:

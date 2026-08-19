@@ -31,6 +31,35 @@
   <div class="banner b-bad">This day was skipped — nothing will be posted.</div>
 {% endif %}
 
+{% if run['status'] == 'generating' %}
+  <div class="banner b-warn">Generating variants for <b>{{ run['occasion'] }}</b> — this takes a
+    minute or two. This page refreshes itself.</div>
+  <meta http-equiv="refresh" content="12">
+{% endif %}
+
+{% if alternates %}
+<div class="card">
+  <h2>Occasion for this post</h2>
+  <div class="sub" style="margin-bottom:10px">
+    {{ alternates|length + 1 }} occasions fall on {{ run['date_iso'] }}. The post is built for the
+    first one — switch if you'd rather post about another.</div>
+  <div class="row" style="gap:8px">
+    <span class="btn ok sm" style="cursor:default">{{ run['occasion'] }}
+      {%- if occasion.get('reach') %} · {{ occasion['reach'] }}/10{% endif %}</span>
+    {% for a in alternates %}
+      <form method="post" action="{{ url_for('switch_occasion', run_id=run['id']) }}"
+            onsubmit="return confirm('Rebuild the day for “{{ a['event'] }}”? The current variants are replaced.')">
+        <input type="hidden" name="token" value="{{ token }}">
+        <input type="hidden" name="idx" value="{{ loop.index0 }}">
+        <button class="btn sm" {% if run['status']=='generating' %}disabled{% endif %}
+                title="{{ a.get('why','') }}">{{ a['event'][:44] }}
+          {%- if a.get('reach') %} · {{ a['reach'] }}/10{% endif %}</button>
+      </form>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <div class="card">
   <h2>Pick one</h2>
   <div class="grid">
@@ -71,18 +100,22 @@
 
 <div class="card">
   <h2>Caption</h2>
-  <div class="row" style="align-items:flex-start;gap:14px">
-    <div style="flex:1;min-width:260px">
-      <div class="sub" style="margin-bottom:6px">Hindi</div>
-      <div class="cap" id="cap-hi">{{ caption_hi }}</div>
-      <button class="btn sm gh" style="margin-top:8px" onclick="copyCap('cap-hi',this)">Copy Hindi</button>
+  {% if request.args.get('saved') %}<div class="banner b-ok" style="margin-top:0">Caption saved.</div>{% endif %}
+  <div class="sub" style="margin-bottom:8px">This is what gets posted. Edit it freely.</div>
+  <form method="post" action="{{ url_for('save_caption', run_id=run['id']) }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <textarea name="caption" id="capbox" rows="10"
+              style="width:100%;line-height:1.6">{{ caption_final }}</textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="btn pri">Save caption</button>
+      <button type="button" class="btn sm gh" onclick="loadCap('hi')">Use Hindi draft</button>
+      <button type="button" class="btn sm gh" onclick="loadCap('en')">Use English draft</button>
+      <button type="button" class="btn sm gh" onclick="copyBox()">Copy</button>
+      {% if run['caption_override'] %}<span class="sub">edited</span>{% endif %}
     </div>
-    <div style="flex:1;min-width:260px">
-      <div class="sub" style="margin-bottom:6px">English</div>
-      <div class="cap" id="cap-en">{{ caption_en }}</div>
-      <button class="btn sm gh" style="margin-top:8px" onclick="copyCap('cap-en',this)">Copy English</button>
-    </div>
-  </div>
+  </form>
+  <script id="d-hi" type="text/plain">{{ caption_hi }}</script>
+  <script id="d-en" type="text/plain">{{ caption_en }}</script>
 </div>
 
 <div class="card">
@@ -96,17 +129,15 @@
     <div class="sub" style="margin-bottom:10px">Posting to <b>@{{ ig.account }}</b>.</div>
   {% endif %}
   <form method="post" action="{{ url_for('post_run', run_id=run['id']) }}" class="row"
-        onsubmit="return confirm('Post the approved image to Instagram now? This is public and immediate.')">
+        onsubmit="this.caption.value=document.getElementById('capbox').value;
+                  return confirm('Post the approved image to Instagram now? This is public and immediate.')">
     <input type="hidden" name="token" value="{{ token }}">
-    <label class="sub">Caption
-      <select name="lang" class="btn sm" style="margin-left:6px">
-        <option value="hi">Hindi</option><option value="en">English</option>
-      </select>
-    </label>
+    <input type="hidden" name="caption" value="">
     <button class="btn pri" {% if not approved or run['status']=='posted' %}disabled{% endif %}>
       {% if ig.ready %}Post to Instagram{% else %}Mark as posted manually{% endif %}
     </button>
-    {% if not approved %}<span class="sub">Approve a variant to enable this.</span>{% endif %}
+    {% if not approved %}<span class="sub">Approve a variant to enable this.</span>
+    {% else %}<span class="sub">Posts the approved image with the caption above.</span>{% endif %}
   </form>
   {% if publishes %}
     <table style="margin-top:14px">
@@ -123,8 +154,8 @@
 <div class="card">
   <h2>Details</h2>
   <div class="kv">
-    <div>Headline</div><div>{{ brief.get('headline_hi','') }}</div>
-    <div>Subline</div><div>{{ brief.get('subline_hi','') or '—' }}</div>
+    <div>Headline</div><div>{{ brief.get('occasion_hi','') }} {{ brief.get('suffix_hi','') }}</div>
+    <div>Blessing</div><div>{{ brief.get('quote_hi') or brief.get('blessing_hi','') or '—' }}</div>
     <div>Tone</div><div>{{ brief.get('tone','') }}</div>
     <div>Why this day</div><div>{{ occasion.get('why','—') }}</div>
     <div>Reach score</div><div>{{ occasion.get('reach','—') }}/10</div>
@@ -138,10 +169,12 @@
 </div>
 
 <script>
-function copyCap(id, btn){
-  navigator.clipboard.writeText(document.getElementById(id).innerText).then(function(){
-    var t = btn.textContent; btn.textContent = 'Copied'; setTimeout(function(){btn.textContent=t}, 1400);
-  });
+function loadCap(which){
+  document.getElementById('capbox').value =
+    document.getElementById('d-' + which).textContent.trim();
+}
+function copyBox(){
+  navigator.clipboard.writeText(document.getElementById('capbox').value);
 }
 </script>
 {% endblock %}

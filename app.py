@@ -60,13 +60,22 @@ def _view(run):
     """Everything a review page needs for one run."""
     b = json.loads(run["brief_json"] or "{}")
     ev = json.loads(run["occasion_json"] or "{}")
+    try:
+        alts = json.loads(run["alternates_json"] or "[]")
+    except Exception:  # noqa: BLE001
+        alts = []
+    cap_hi = brief_mod.caption_text(b, "hi") if b else ""
+    cap_en = brief_mod.caption_text(b, "en") if b else ""
     return {
         "run": run,
         "brief": b,
         "occasion": ev,
+        "alternates": alts,
         "variants": db.variants(run["id"]),
-        "caption_hi": brief_mod.caption_text(b, "hi") if b else "",
-        "caption_en": brief_mod.caption_text(b, "en") if b else "",
+        "caption_hi": cap_hi,
+        "caption_en": cap_en,
+        # what will actually be posted: the edited caption if there is one
+        "caption_final": (run["caption_override"] or cap_hi),
         "publishes": db.publishes(run["id"]),
         "ig": publisher.preflight(),
     }
@@ -135,6 +144,41 @@ def variant_action(variant_id, action):
     return redirect(url_for("review", token=run["review_token"]))
 
 
+@app.route("/run/<int:run_id>/switch", methods=["POST"])
+def switch_occasion(run_id):
+    """Rebuild the day around a different occasion from the picker.
+
+    Generation takes a minute or two, so it runs on a thread and the page shows
+    a generating state rather than holding the request open.
+    """
+    run = _run_or_404(run_id)
+    if request.form.get("token") != run["review_token"]:
+        abort(403)
+    if run["status"] == "generating":
+        return redirect(url_for("review", token=run["review_token"]))
+    try:
+        alts = json.loads(run["alternates_json"] or "[]")
+        occ = alts[int(request.form["idx"])]
+    except (ValueError, IndexError, KeyError, TypeError):
+        abort(400)
+
+    # Drop any hand-written caption: it describes the occasion being replaced, and
+    # silently posting a Patel caption on an Indira Gandhi post is the worst
+    # possible outcome of this button.
+    db.set_run(run_id, status="generating", caption_override="")
+    threading.Thread(target=daily.regenerate, args=(run_id, occ), daemon=True).start()
+    return redirect(url_for("review", token=run["review_token"]))
+
+
+@app.route("/run/<int:run_id>/caption", methods=["POST"])
+def save_caption(run_id):
+    run = _run_or_404(run_id)
+    if request.form.get("token") != run["review_token"]:
+        abort(403)
+    db.set_run(run_id, caption_override=request.form.get("caption", "")[:4000])
+    return redirect(url_for("review", token=run["review_token"], saved="1"))
+
+
 @app.route("/run/<int:run_id>/skip", methods=["POST"])
 def skip_run(run_id):
     run = _run_or_404(run_id)
@@ -160,9 +204,12 @@ def post_run(run_id):
     if not approved:
         return redirect(url_for("review", token=run["review_token"], err="approve-first"))
 
-    lang = "en" if request.form.get("lang") == "en" else "hi"
     b = json.loads(run["brief_json"] or "{}")
-    caption = brief_mod.caption_text(b, lang)
+    # the caption typed on the review page wins over the generated one
+    caption = (request.form.get("caption") or run["caption_override"] or "").strip()
+    lang = "custom" if caption else "hi"
+    if not caption:
+        caption = brief_mod.caption_text(b, "hi")
 
     pre = publisher.preflight()
     if not pre["ready"]:

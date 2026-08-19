@@ -354,7 +354,14 @@ def compose(art_bytes: bytes, brief: Dict, variant: int = 0) -> Tuple[bytes, Dic
             if th["dark"]:
                 art = bk.defringe(art)
         else:
-            art, mode = bk.photo_card(_crop_active(sq)), "card"
+            # The model returned a scene rather than an isolated subject. Flood
+            # cutting would shred its edges and a rounded rectangle reads as a
+            # photo box pasted on the design, so it gets the theme's own frame.
+            src = _crop_active(sq)
+            if th.get("frame") == "arch":
+                art, mode = bk.arch(src, ring=th["orn"]), "arch"
+            else:
+                art, mode = bk.medallion(src, ring=th["orn"]), "medallion"
         ok = _layout_hero(canvas, art, brief, th, mirror=bool(th.get("mirror")))
 
     notes = {"shaping": bool(ok), "theme": v["theme"], "mode": v["mode"],
