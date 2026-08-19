@@ -3,12 +3,13 @@
 {% block body %}
 {% set approved = variants | selectattr('status','equalto','approved') | list | first %}
 
-<header>
+<header class="page">
   <h1>{{ run['occasion'] or 'No occasion' }}</h1>
-  <span class="sub">{{ run['date_iso'] }} · {{ occasion.get('type','') }}
-    {%- if occasion.get('priority') %} · {{ occasion['priority'] }}{% endif %}</span>
+  <div class="sub">{{ run['date_iso'] }} · {{ occasion.get('type','') }}
+    {%- if occasion.get('priority') %} · {{ occasion['priority'] }}{% endif %}
+    {%- if occasion.get('reach') %} · reach {{ occasion['reach'] }}/10{% endif %}</div>
+  {% if brief.get('context') %}<div class="sub" style="margin-top:6px">{{ brief['context'] }}</div>{% endif %}
 </header>
-<div class="sub" style="margin-bottom:4px">{{ brief.get('context','') }}</div>
 
 {% if request.args.get('err') == 'approve-first' %}
   <div class="banner b-bad">Pick a variant first — nothing is approved yet.</div>
@@ -39,12 +40,12 @@
 
 {% if alternates %}
 <div class="card">
-  <h2>Occasion for this post</h2>
+  <h2>Occasion</h2>
   <div class="sub" style="margin-bottom:10px">
     {{ alternates|length + 1 }} occasions fall on {{ run['date_iso'] }}. The post is built for the
     first one — switch if you'd rather post about another.</div>
   <div class="row" style="gap:8px">
-    <span class="btn ok sm" style="cursor:default">{{ run['occasion'] }}
+    <span class="btn sm on" style="cursor:default">✓ {{ run['occasion'] }}
       {%- if occasion.get('reach') %} · {{ occasion['reach'] }}/10{% endif %}</span>
     {% for a in alternates %}
       <form method="post" action="{{ url_for('switch_occasion', run_id=run['id']) }}"
@@ -87,10 +88,11 @@
         <div class="acts">
           <form method="post" action="{{ url_for('variant_action', variant_id=v['id'], action='approve') }}" style="flex:1">
             <input type="hidden" name="token" value="{{ token }}">
-            <button class="btn ok sm" style="width:100%"
-              {% if v['status']=='approved' %}disabled{% endif %}>Approve</button>
+            <button class="btn pri sm" style="width:100%"
+              {% if v['status']=='approved' %}disabled{% endif %}>
+              {% if v['status']=='approved' %}Approved{% else %}Approve{% endif %}</button>
           </form>
-          <a class="btn gh sm" href="{{ url_for('img', variant_id=v['id']) }}?dl=1">Download</a>
+          <a class="btn sm" href="{{ url_for('img', variant_id=v['id']) }}?dl=1">Download</a>
         </div>
         {% endif %}
       </div>
@@ -108,9 +110,9 @@
               style="width:100%;line-height:1.6">{{ caption_final }}</textarea>
     <div class="row" style="margin-top:10px">
       <button class="btn pri">Save caption</button>
-      <button type="button" class="btn sm gh" onclick="loadCap('hi')">Use Hindi draft</button>
-      <button type="button" class="btn sm gh" onclick="loadCap('en')">Use English draft</button>
-      <button type="button" class="btn sm gh" onclick="copyBox()">Copy</button>
+      <button type="button" class="btn sm" onclick="loadCap('hi')">Use Hindi draft</button>
+      <button type="button" class="btn sm" onclick="loadCap('en')">Use English draft</button>
+      <button type="button" class="btn sm" onclick="copyBox()">Copy</button>
       {% if run['caption_override'] %}<span class="sub">edited</span>{% endif %}
     </div>
   </form>
@@ -119,7 +121,7 @@
 </div>
 
 <div class="card">
-  <h2>Post it</h2>
+  <h2>Post</h2>
   {% if not ig.ready %}
     <div class="banner b-warn" style="margin-top:0">
       <b>Auto-posting is off.</b> Missing: {{ ig.missing | join('; ') }}.<br>
@@ -162,9 +164,9 @@
     <div>Calendar row</div><div class="muted">{{ occasion.get('category','') }}
       {%- if occasion.get('tier') %} · {{ occasion['tier'] }}{% endif %}</div>
   </div>
-  <form method="post" action="{{ url_for('skip_run', run_id=run['id']) }}" style="margin-top:14px">
+  <form method="post" action="{{ url_for('skip_run', run_id=run['id']) }}" style="margin-top:16px">
     <input type="hidden" name="token" value="{{ token }}">
-    <button class="btn gh sm">Skip today</button>
+    <button class="btn sm">Skip today</button>
   </form>
 </div>
 

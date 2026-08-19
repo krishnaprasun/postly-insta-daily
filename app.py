@@ -13,13 +13,14 @@ from __future__ import annotations
 
 import datetime
 import functools
+import io
 import json
 import threading
 import time
 from typing import Optional
 
 from flask import (Flask, Response, abort, jsonify, redirect, render_template,
-                   request, send_file, url_for)
+                   request, send_file, session, url_for)
 
 import brief as brief_mod
 import config
@@ -32,21 +33,58 @@ import publisher
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
+app.permanent_session_lifetime = datetime.timedelta(days=30)
 db.init()
 
 
 # ── auth ────────────────────────────────────────────────────────────────────
 def require_admin(fn):
+    """Session login rather than HTTP Basic.
+
+    Basic auth put a raw browser credential popup in front of the tool, which
+    looks broken next to the brand and cannot be signed out of.
+    """
     @functools.wraps(fn)
     def wrapper(*a, **kw):
         if not config.ADMIN_PASS:                     # unset = local dev, open
             return fn(*a, **kw)
-        auth = request.authorization
-        if not auth or auth.username != config.ADMIN_USER or auth.password != config.ADMIN_PASS:
-            return Response("Authentication required", 401,
-                            {"WWW-Authenticate": 'Basic realm="postly-insta"'})
-        return fn(*a, **kw)
+        if session.get("admin"):
+            return fn(*a, **kw)
+        return redirect(url_for("login", next=request.path))
     return wrapper
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = ""
+    if request.method == "POST":
+        if (request.form.get("username") == config.ADMIN_USER
+                and request.form.get("password") == config.ADMIN_PASS):
+            session["admin"] = True
+            session.permanent = True
+            nxt = request.args.get("next") or url_for("index")
+            return redirect(nxt if nxt.startswith("/") else url_for("index"))
+        error = "Wrong username or password."
+    return render_template("login.html", error=error, hide_nav=True)
+
+
+@app.route("/logout")
+def logout():
+    session.pop("admin", None)
+    return redirect(url_for("login"))
+
+
+@app.route("/brand/logo.png")
+def brand_logo():
+    """The wordmark recoloured for a light UI (the shipped asset is white)."""
+    import brandkit as bk
+    lg = bk.logo(96, bk.NAVY)
+    if lg is None:
+        abort(404)
+    buf = io.BytesIO()
+    lg.save(buf, "PNG")
+    buf.seek(0)
+    return send_file(buf, mimetype="image/png")
 
 
 def _run_or_404(run_id: int):

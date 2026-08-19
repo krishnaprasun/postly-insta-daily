@@ -4,60 +4,116 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Postly Daily{% endblock %}</title>
+<link rel="icon" href="{{ url_for('brand_logo') }}">
 <style>
   :root{
-    --bg:#0f1014; --card:#191b22; --card2:#212430; --line:#2c303c;
-    --ink:#f2f3f7; --mut:#9aa0b0; --acc:#ff6b35; --ok:#2fbf71; --warn:#f5b544; --bad:#ef4a5a;
+    --green:#20A75D; --green-dk:#17864a; --green-soft:#e8f6ee;
+    --gold:#E8A017;  --gold-soft:#fdf3e0;
+    --ink:#1A1C2E;   --body:#4a5063; --mut:#8b90a0;
+    --bg:#f6f7f5;    --card:#ffffff; --line:#e6e8e4; --line-dk:#d6d9d3;
+    --bad:#d4342c;   --bad-soft:#fdeceb;
+    --shadow:0 1px 2px rgba(26,28,46,.05), 0 8px 24px rgba(26,28,46,.06);
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
-  a{color:var(--acc);text-decoration:none}
-  .wrap{max-width:1080px;margin:0 auto;padding:20px 16px 64px}
-  header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
-  h1{font-size:20px;margin:0;letter-spacing:-.2px}
-  .sub{color:var(--mut);font-size:13px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}
-  .banner{border-radius:12px;padding:12px 14px;margin:12px 0;font-size:14px;border:1px solid}
-  .b-warn{background:rgba(245,181,68,.10);border-color:rgba(245,181,68,.45);color:#ffd894}
-  .b-bad{background:rgba(239,74,90,.10);border-color:rgba(239,74,90,.45);color:#ffb3bb}
-  .b-ok{background:rgba(47,191,113,.10);border-color:rgba(47,191,113,.45);color:#a5e9c4}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
-  .v{background:var(--card2);border:1px solid var(--line);border-radius:14px;overflow:hidden;
-     display:flex;flex-direction:column}
-  .v.approved{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);
+       font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+       -webkit-font-smoothing:antialiased;}
+  a{color:var(--green-dk);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  .topbar{background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+  .topbar .inner{max-width:1120px;margin:0 auto;padding:14px 20px;display:flex;
+       align-items:center;gap:14px}
+  .topbar img{height:26px;display:block}
+  .topbar .tag{font-size:12px;color:var(--mut);border-left:1px solid var(--line-dk);
+       padding-left:14px;letter-spacing:.2px}
+  .topbar .spacer{flex:1}
+  .wrap{max-width:1120px;margin:0 auto;padding:24px 20px 72px}
+
+  header.page{margin-bottom:18px}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.4px;font-weight:700}
+  .sub{color:var(--mut);font-size:13.5px}
+  h2{font-size:13px;margin:0 0 14px;text-transform:uppercase;letter-spacing:.7px;
+     color:var(--mut);font-weight:700}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+        padding:20px;margin:16px 0;box-shadow:var(--shadow)}
+
+  /* block, not flex: a flex banner turns a leading <b> into its own column and
+     the sentence breaks into two ragged halves */
+  .banner{border-radius:12px;padding:13px 15px;margin:12px 0;font-size:14px;
+          border:1px solid;line-height:1.55}
+  .banner b{margin-right:4px}
+  .b-warn{background:var(--gold-soft);border-color:#f0d9a8;color:#8a5d00}
+  .b-bad{background:var(--bad-soft);border-color:#f3c9c6;color:#a12820}
+  .b-ok{background:var(--green-soft);border-color:#b9e3cc;color:#136c40}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:16px}
+  .v{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+     display:flex;flex-direction:column;transition:box-shadow .15s,border-color .15s}
+  .v:hover{box-shadow:var(--shadow);border-color:var(--line-dk)}
+  .v.approved{border-color:var(--green);box-shadow:0 0 0 2px var(--green-soft)}
   .v.rejected{opacity:.45}
-  .v img{width:100%;display:block;aspect-ratio:1/1;object-fit:cover;background:#000}
-  .v .meta{padding:10px 12px;display:flex;justify-content:space-between;align-items:center;
-           font-size:12px;color:var(--mut);gap:8px}
-  .v .acts{padding:0 12px 12px;display:flex;gap:8px}
-  .btn{appearance:none;border:1px solid var(--line);background:#2a2e3b;color:var(--ink);
-       border-radius:9px;padding:9px 12px;font-size:13px;cursor:pointer;font-weight:600}
-  .btn:hover{border-color:#414759}
-  .btn.pri{background:var(--acc);border-color:var(--acc);color:#1a0e08}
-  .btn.ok{background:var(--ok);border-color:var(--ok);color:#04240f}
-  .btn.gh{background:transparent}
-  .btn.sm{padding:6px 10px;font-size:12px}
+  .v img{width:100%;display:block;aspect-ratio:1/1;object-fit:cover;background:#f0f0ee}
+  .v .meta{padding:11px 13px 0;display:flex;justify-content:space-between;
+           align-items:center;font-size:12px;color:var(--mut);gap:8px}
+  .v .acts{padding:11px 13px 13px;display:flex;gap:8px}
+
+  .btn{appearance:none;border:1px solid var(--line-dk);background:var(--card);color:var(--ink);
+       border-radius:10px;padding:10px 15px;font-size:13.5px;cursor:pointer;font-weight:600;
+       font-family:inherit;transition:background .12s,border-color .12s}
+  .btn:hover{background:#fafbf9;border-color:#c2c6bf}
+  .btn.pri{background:var(--green);border-color:var(--green);color:#fff}
+  .btn.pri:hover{background:var(--green-dk);border-color:var(--green-dk)}
+  .btn.gold{background:var(--gold);border-color:var(--gold);color:#3d2800}
+  .btn.sm{padding:7px 11px;font-size:12.5px;border-radius:9px}
+  .btn.on{background:var(--green-soft);border-color:var(--green);color:var(--green-dk)}
   .btn[disabled]{opacity:.45;cursor:not-allowed}
-  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;
-       border:1px solid var(--line);color:var(--mut)}
-  .tag.ok{color:#a5e9c4;border-color:rgba(47,191,113,.5)}
-  .tag.warn{color:#ffd894;border-color:rgba(245,181,68,.5)}
-  .cap{white-space:pre-wrap;background:#12141a;border:1px solid var(--line);border-radius:10px;
-       padding:12px;font-size:13.5px;max-height:260px;overflow:auto}
+
+  .tag{display:inline-block;font-size:11px;padding:3px 9px;border-radius:20px;font-weight:600;
+       border:1px solid var(--line-dk);color:var(--mut);background:#fafbf9}
+  .tag.ok{color:var(--green-dk);border-color:#b9e3cc;background:var(--green-soft)}
+  .tag.warn{color:#8a5d00;border-color:#f0d9a8;background:var(--gold-soft)}
+
+  textarea,input[type=text],input[type=date],input[type=password]{
+       background:#fff;border:1px solid var(--line-dk);color:var(--ink);border-radius:10px;
+       padding:11px 13px;font:inherit;font-size:14px;width:100%;font-family:inherit}
+  textarea:focus,input:focus{outline:2px solid var(--green-soft);border-color:var(--green)}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  .kv{display:grid;grid-template-columns:130px 1fr;gap:6px 12px;font-size:13px}
+  .kv{display:grid;grid-template-columns:150px 1fr;gap:9px 16px;font-size:13.5px}
   .kv div:nth-child(odd){color:var(--mut)}
-  table{width:100%;border-collapse:collapse;font-size:13.5px}
-  th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line)}
-  th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
-  input[type=text],input[type=date],textarea{background:#12141a;border:1px solid var(--line);
-       color:var(--ink);border-radius:9px;padding:9px 11px;font:inherit;font-size:13px}
-  h2{font-size:15px;margin:0 0 10px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:11px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+  tr:last-child td{border-bottom:none}
   .muted{color:var(--mut)}
-  @media (max-width:640px){ .grid{grid-template-columns:1fr 1fr;gap:10px}
-    .v .acts{flex-direction:column} .kv{grid-template-columns:100px 1fr} }
+
+  .login{max-width:380px;margin:9vh auto;padding:0 20px}
+  .login .card{padding:30px;text-align:center}
+  .login img{height:34px;margin-bottom:6px}
+  .login .fld{text-align:left;margin:14px 0}
+  .login label{display:block;font-size:12.5px;color:var(--mut);margin-bottom:6px;font-weight:600}
+
+  @media (max-width:640px){
+    .wrap{padding:16px 14px 56px}
+    .grid{grid-template-columns:1fr 1fr;gap:11px}
+    .v .acts{flex-direction:column}
+    .kv{grid-template-columns:1fr;gap:2px 0}
+    .kv div:nth-child(odd){margin-top:8px}
+    h1{font-size:21px}
+  }
 </style>
 </head>
-<body><div class="wrap">{% block body %}{% endblock %}</div></body>
+<body>
+{% if not hide_nav %}
+<div class="topbar"><div class="inner">
+  <a href="{{ url_for('index') }}"><img src="{{ url_for('brand_logo') }}" alt="Postly"></a>
+  <span class="tag">Daily Instagram</span>
+  <span class="spacer"></span>
+  {% if session.get('admin') %}<a class="sub" href="{{ url_for('logout') }}">Sign out</a>{% endif %}
+</div></div>
+{% endif %}
+<div class="{% block shell %}wrap{% endblock %}">{% block body %}{% endblock %}</div>
+</body>
 </html>

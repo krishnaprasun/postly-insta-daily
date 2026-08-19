@@ -1,49 +1,59 @@
 {% extends "base.html" %}
 {% block title %}Postly Daily — runs{% endblock %}
 {% block body %}
-<header><h1>Daily Instagram posts</h1>
-  <span class="sub">generates {{ '%02d:%02d'|format(cfg.RUN_HOUR_IST, cfg.RUN_MINUTE_IST) }} IST ·
-  {{ cfg.VARIANT_COUNT }} variants</span></header>
+<header class="page">
+  <h1>Daily posts</h1>
+  <div class="sub">Generates {{ '%02d:%02d'|format(cfg.RUN_HOUR_IST, cfg.RUN_MINUTE_IST) }} IST ·
+    {{ cfg.VARIANT_COUNT }} variants a day</div>
+</header>
 
 {% if request.args.get('queued') %}
-<div class="banner b-warn">Generating the post for <b>{{ request.args.get('queued') }}</b> —
-  takes a couple of minutes. This page refreshes itself; the run appears below when it starts.</div>
+<div class="banner b-warn"><span>⏳</span><span>Generating the post for
+  <b>{{ request.args.get('queued') }}</b> — takes a couple of minutes. This page refreshes
+  itself; the run appears below once it starts.</span></div>
 <meta http-equiv="refresh" content="15">
 {% endif %}
 
-{% if not ig.ready %}
-<div class="banner b-warn"><b>Instagram auto-posting is off.</b> {{ ig.missing | join('; ') }}.
-  Approved posts are downloaded and posted by hand until this is set up.</div>
-{% else %}
-<div class="banner b-ok">Auto-posting is live on <b>@{{ ig.account }}</b>.</div>
+{% if ig.ready %}
+  <div class="banner b-ok"><span>✓</span><span>Auto-posting is live on <b>@{{ ig.account }}</b>.</span></div>
 {% endif %}
 
 <div class="card">
+  <h2>Generate</h2>
   <form method="post" action="{{ url_for('generate') }}" class="row">
-    <input type="date" name="date" value="{{ today }}">
-    <label class="sub"><input type="checkbox" name="force" value="1"> regenerate</label>
+    <input type="date" name="date" value="{{ today }}" style="width:auto">
+    <label class="sub" style="display:flex;align-items:center;gap:6px">
+      <input type="checkbox" name="force" value="1" style="width:auto"> replace existing</label>
     <button class="btn pri">Generate now</button>
-    <a class="btn gh sm" href="{{ url_for('preview') }}">Preview today's pick</a>
-    <a class="btn gh sm" href="{{ url_for('healthz') }}">Health</a>
+    <span class="spacer" style="flex:1"></span>
+    <a class="btn sm" href="{{ url_for('preview') }}">Preview today's pick</a>
+    <a class="btn sm" href="{{ url_for('healthz') }}">Health</a>
   </form>
 </div>
 
 <div class="card">
+  <h2>Recent runs</h2>
   <table>
     <tr><th>Date</th><th>Occasion</th><th>Variants</th><th>Status</th><th></th></tr>
     {% for r in rows %}
     <tr>
-      <td>{{ r.run['date_iso'] }}</td>
-      <td>{{ r.run['occasion'] or '—' }}
+      <td style="white-space:nowrap">{{ r.run['date_iso'] }}</td>
+      <td><b>{{ r.run['occasion'] or '—' }}</b>
         {% if r.run['needs_check'] %}<span class="tag warn">check</span>{% endif %}</td>
       <td>{{ r.n_ok }}/{{ r.n }}</td>
       <td>{% if r.run['status']=='posted' %}<span class="tag ok">posted</span>
-          {% elif r.run['status']=='failed' %}<span class="tag">failed</span>
+          {% elif r.run['status']=='approved' %}<span class="tag ok">approved</span>
+          {% elif r.run['status']=='generating' %}<span class="tag warn">generating</span>
           {% else %}<span class="tag">{{ r.run['status'] }}</span>{% endif %}</td>
-      <td><a href="{{ url_for('review', token=r.run['review_token']) }}">review →</a></td>
+      <td style="text-align:right"><a href="{{ url_for('review', token=r.run['review_token']) }}">Open →</a></td>
     </tr>
     {% endfor %}
-    {% if not rows %}<tr><td colspan="5" class="muted">No runs yet.</td></tr>{% endif %}
+    {% if not rows %}<tr><td colspan="5" class="muted">No runs yet — generate one above.</td></tr>{% endif %}
   </table>
 </div>
+
+{% if not ig.ready %}
+<div class="sub" style="margin-top:6px">Instagram auto-posting is off — approve a variant,
+  download it, and post by hand. ({{ ig.missing | join('; ') }})</div>
+{% endif %}
 {% endblock %}
