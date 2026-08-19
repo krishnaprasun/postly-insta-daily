@@ -111,9 +111,13 @@ def _bokeh(im: Image.Image, color, n: int = 34, seed: int = 3):
 # ── the themes ──────────────────────────────────────────────────────────────
 def _floral_cream(tribute: bool) -> Image.Image:
     if tribute:
-        im = _vgrad((252, 252, 253), (238, 239, 243))
-        im = _foliage(im, "tr", (150, 158, 175), 40, 18, seed=11)
-        im = _foliage(im, "bl", (150, 158, 175), 28, 12, seed=12)
+        im = _vgrad((250, 250, 252), (232, 234, 240))
+        im = _radial_glow(im, PX * 0.76, PX * 0.18, PX * 0.46, (255, 255, 255), 70)
+        im = _foliage(im, "tr", (128, 138, 158), 78, 26, seed=11)
+        im = _foliage(im, "bl", (136, 146, 166), 58, 18, seed=12)
+        d = ImageDraw.Draw(im, "RGBA")
+        _mandala(d, 90, PX - 90, 120, 5, (120, 128, 150), 34)
+        _mandala(d, PX - 110, 130, 90, 3, (120, 128, 150), 26)
     else:
         im = _vgrad((255, 253, 244), (250, 244, 228))
         im = _radial_glow(im, PX * 0.78, PX * 0.16, PX * 0.5, (255, 246, 214), 90)

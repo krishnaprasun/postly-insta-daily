@@ -49,8 +49,11 @@
           <span>{{ v['style'] }}</span>
           {% if v['status'] == 'approved' %}<span class="tag ok">approved</span>
           {% elif v['status'] == 'rejected' %}<span class="tag">rejected</span>
+          {% elif v['flags'] %}<span class="tag warn" title="{{ v['flags'] }}">check</span>
           {% elif v['text_qa'] == 'True' %}<span class="tag warn">text?</span>{% endif %}
         </div>
+        {% if v['flags'] %}<div style="padding:0 12px 8px;font-size:11.5px;color:#ffd894">
+          {{ v['flags'] }}</div>{% endif %}
         {% if v['filename'] %}
         <div class="acts">
           <form method="post" action="{{ url_for('variant_action', variant_id=v['id'], action='approve') }}" style="flex:1">

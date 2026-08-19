@@ -194,6 +194,25 @@ def shadow(im: Image.Image, blur: int = 12, alpha: int = 46,
     return out
 
 
+def crest(draw: ImageDraw.ImageDraw, cx: int, y: int, size: int, color=GOLD) -> None:
+    """A small decorative crest sitting above the greeting line.
+
+    The reference creatives open with a motif before the type starts; without it
+    the text block begins abruptly and the layout reads unfinished.
+    """
+    s2 = size
+    draw.polygon([(cx, y - s2), (cx + s2 * 0.34, y), (cx, y + s2), (cx - s2 * 0.34, y)],
+                 fill=(*color, 230))
+    for dx in (-1, 1):
+        draw.arc([cx + dx * s2 * 0.30 - s2 * 0.95, y - s2 * 0.62,
+                  cx + dx * s2 * 0.30 + s2 * 0.95, y + s2 * 0.62],
+                 start=200 if dx > 0 else 340, end=340 if dx > 0 else 200,
+                 fill=(*color, 190), width=3)
+    for dx in (-1, 1):
+        draw.ellipse([cx + dx * s2 * 1.25 - 4, y - 4, cx + dx * s2 * 1.25 + 4, y + 4],
+                     fill=(*color, 200))
+
+
 def ornament(draw: ImageDraw.ImageDraw, cx: int, y: int, w: int, color=GOLD) -> None:
     """The small diamond-and-rule divider used between text blocks."""
     half = w // 2

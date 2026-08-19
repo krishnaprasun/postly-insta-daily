@@ -90,8 +90,14 @@ def run_for(date_iso: Optional[str] = None, force: bool = False,
         if r.get("ok"):
             fn = f"run{run_id}_v{r['index']}.jpg"
             (config.IMAGE_DIR / fn).write_bytes(r["image"])
+            flags = []
+            if r.get("text_qa") is True:
+                flags.append("possible text in artwork")
+            if r.get("likeness_ok") is False:
+                flags.append("portrait may not look like the person")
             db.add_variant(run_id, r["index"], r.get("style", ""), fn,
-                           text_qa=r.get("text_qa"), prompt=r.get("prompt", ""))
+                           text_qa=r.get("text_qa"), prompt=r.get("prompt", ""),
+                           flags="; ".join(flags))
             ok += 1
         else:
             db.add_variant(run_id, r["index"], r.get("style", ""), "",

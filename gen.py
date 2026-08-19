@@ -69,6 +69,34 @@ def _art(prompt: str, system: str, attempts: int = 2) -> Dict:
     return {"art": None, "error": last_err or "unknown"}
 
 
+LIKENESS_QA = ("Who is the person depicted in this image? If they are a recognisable public "
+               "figure, answer with their name only. If the person is not recognisable as any "
+               "specific real person, answer exactly: UNKNOWN")
+
+
+def _likeness_ok(art: bytes, name: str) -> Optional[bool]:
+    """Does the portrait actually read as the intended person?
+
+    A wrong or generic face on a national figure's tribute is the most visible
+    failure this system can produce, and it is invisible in a thumbnail. The
+    check is advisory — it flags for the review page, it does not drop the
+    variant, because a vision model's recall on lesser-known figures is itself
+    unreliable.
+    """
+    if not (name and getattr(llm, "ENABLED", False)):
+        return None
+    try:
+        ans = llm.vision_text(LIKENESS_QA, art, timeout=40).strip()
+        if ans.upper().startswith("UNKNOWN"):
+            return False
+        want = {w for w in name.lower().replace(".", " ").split() if len(w) > 2}
+        got = {w for w in ans.lower().replace(".", " ").split() if len(w) > 2}
+        return bool(want & got)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[gen] likeness QA failed: {exc}", flush=True)
+        return None
+
+
 def one_variant(i: int, brief: Dict) -> Dict:
     """Build variant i end to end."""
     v = prompts.variant(i)
@@ -81,6 +109,8 @@ def one_variant(i: int, brief: Dict) -> Dict:
         if not res.get("art"):
             out["error"] = res.get("error", "generation failed")
             return out
+        if brief.get("show_person"):
+            out["likeness_ok"] = _likeness_ok(res["art"], brief.get("likeness_of", ""))
         img, notes = imaging.compose(res["art"], brief, i)
         if not notes.get("shaping"):
             # The whole design depends on the overlaid Hindi headline. Without
@@ -90,6 +120,7 @@ def one_variant(i: int, brief: Dict) -> Dict:
                             "could not be drawn. Install fonts-noto-devanagari + libraqm "
                             "(Linux) or pyobjc-framework-Cocoa (macOS). See README.")
             return out
+        notes["likeness_ok"] = out.get("likeness_ok")
         out.update({"ok": True, "image": img, "text_qa": res.get("text_qa"),
                     "retried": res.get("retried", False), "notes": notes})
     except Exception as exc:  # noqa: BLE001

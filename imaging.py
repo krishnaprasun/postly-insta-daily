@@ -174,16 +174,20 @@ def _text_block(brief: Dict, th: Dict, max_w: int, scale: float = 1.0,
     if not rows:
         return None
 
+    crest_h = S(46)
     orn_h = S(48) if body_text else 0
     body_imgs = bk.wrap(body_text, S(29), max_w, th["body"], bold=False, max_lines=4) \
         if body_text else []
 
-    total_h = sum(im.height + g for im, g in rows) + orn_h + \
+    total_h = crest_h + sum(im.height + g for im, g in rows) + orn_h + \
         sum(im.height + S(8) for im in body_imgs)
     block = Image.new("RGBA", (max_w, max(1, total_h)), (0, 0, 0, 0))
     d = ImageDraw.Draw(block, "RGBA")
 
     y = 0
+    bk.ornament(d, max_w // 2 if center else min(max_w // 2, 190), y + S(18),
+                int(max_w * 0.30), th["orn"])
+    y += crest_h
     for im, g in rows:
         block.alpha_composite(im, ((max_w - im.width) // 2 if center else 0, y))
         y += im.height + g
@@ -199,6 +203,37 @@ def _text_block(brief: Dict, th: Dict, max_w: int, scale: float = 1.0,
     return block.crop((0, 0, max_w, bbox[3])) if bbox else block
 
 
+def _fit_block(brief: Dict, th: Dict, max_w: int, max_h: int, center: bool = True,
+               cap: float = 1.25) -> Optional[Image.Image]:
+    """Largest text block that still fits the space.
+
+    A fixed scale was leaving a third of the frame empty on short copy and
+    crowding long copy. Type should fill the column it is given.
+    """
+    lo, hi, best = 0.45, cap, None
+    for _ in range(7):
+        mid = (lo + hi) / 2
+        blk = _text_block(brief, th, max_w, scale=mid, center=center)
+        if blk is None:
+            return None
+        if blk.height <= max_h:
+            best = blk
+            lo = mid
+        else:
+            hi = mid
+    return best or _text_block(brief, th, max_w, scale=0.5, center=center)
+
+
+def _ground_shadow(canvas, x: int, y: int, w: int, dark: bool):
+    """Contact shadow so a cutout sits on the canvas instead of floating."""
+    pad = 60
+    sh = Image.new("RGBA", (w + pad * 2, 130), (0, 0, 0, 0))
+    ImageDraw.Draw(sh).ellipse([pad, 30, pad + w, 100],
+                               fill=(0, 0, 0, 92 if not dark else 130))
+    sh = sh.filter(ImageFilter.GaussianBlur(26))
+    canvas.alpha_composite(sh, (x - pad, y - 78))
+
+
 # ── subject layouts (cutout floated on a painted canvas) ────────────────────
 def _layout_hero(canvas, art, brief, th, mirror=False):
     trimmed = bk.trim(art)
@@ -206,15 +241,28 @@ def _layout_hero(canvas, art, brief, th, mirror=False):
         return _layout_banner(canvas, art, brief, th)
     top = _header(canvas, th)
     bottom = _footer(canvas, th, compact=True)
-    a = bk.scale_to(trimmed, int(PX * 0.50), bottom - top - 6)
-    canvas.alpha_composite(a, ((PX - MARGIN - a.width) if not mirror else MARGIN,
-                               bottom - a.height))
-    col_w = PX - MARGIN * 2 - int(PX * 0.50) - 20
-    blk = _text_block(brief, th, col_w, scale=0.80, center=True)
+
+    # Art runs from just under the header to the footer and bleeds off the side,
+    # so the frame reads full instead of leaving a third of it empty.
+    art_h = int((bottom - top) * 1.02)
+    a = bk.scale_to(trimmed, int(PX * 0.56), art_h)
+    ax = (PX - MARGIN + 26 - a.width) if not mirror else (MARGIN - 26)
+    ay = bottom - a.height + 6
+    _ground_shadow(canvas, ax + int(a.width * 0.12), bottom + 4, int(a.width * 0.76), th["dark"])
+    canvas.alpha_composite(a, (ax, ay))
+
+    # Column width must come from where the art ACTUALLY landed. Deriving it from
+    # a nominal 50% while the art bleeds to 56% overlapped the two.
+    if not mirror:
+        bx = MARGIN
+        col_w = max(240, ax - 16 - MARGIN)
+    else:
+        bx = ax + a.width + 16
+        col_w = max(240, PX - MARGIN - bx)
+    blk = _fit_block(brief, th, col_w, bottom - top - 20, center=True)
     if blk is None:
         return False
-    bx = MARGIN if not mirror else PX - MARGIN - col_w
-    canvas.alpha_composite(blk, (bx, top + max(0, int((bottom - top - blk.height) * 0.38))))
+    canvas.alpha_composite(blk, (bx, top + max(0, int((bottom - top - blk.height) * 0.42))))
     return True
 
 
@@ -224,12 +272,9 @@ def _layout_banner(canvas, art, brief, th):
     a = bk.scale_to(bk.trim(art), int(PX * 0.74), int((bottom - top) * 0.50))
     canvas.alpha_composite(a, ((PX - a.width) // 2, bottom - a.height))
     avail = bottom - a.height - top - 16
-    blk = _text_block(brief, th, PX - MARGIN * 2 - 40, scale=0.78, center=True)
+    blk = _fit_block(brief, th, PX - MARGIN * 2 - 40, avail, center=True)
     if blk is None:
         return False
-    if blk.height > avail:
-        r = avail / blk.height
-        blk = blk.resize((max(1, int(blk.width * r)), max(1, int(blk.height * r))), Image.LANCZOS)
     canvas.alpha_composite(blk, ((PX - blk.width) // 2, top + max(0, (avail - blk.height) // 2)))
     return True
 
@@ -240,9 +285,9 @@ def _layout_scene_card(canvas, brief, th):
     top = _header(canvas, th, scrim=True)
     bottom = _footer(canvas, th, compact=True)
 
-    card_w = int(PX * 0.52)
+    card_w = int(PX * 0.54)
     card_x = MARGIN
-    blk = _text_block(brief, th, card_w - 56, scale=0.76, center=True)
+    blk = _fit_block(brief, th, card_w - 56, int((bottom - top) * 0.86), center=True)
     if blk is None:
         return False
     card_h = blk.height + 76
@@ -267,7 +312,7 @@ def _layout_scene_wash(canvas, brief, th):
 
     top = _header(canvas, th, centered=True, scrim=True)
     bottom = _footer(canvas, th, compact=True)
-    blk = _text_block(brief, th, PX - MARGIN * 2 - 60, scale=0.92, center=True)
+    blk = _fit_block(brief, th, PX - MARGIN * 2 - 60, int((bottom - top) * 0.62), center=True)
     if blk is None:
         return False
     # sits low: the model was told to keep the BOTTOM half calm, so that is where

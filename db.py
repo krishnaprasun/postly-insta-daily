@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS variant (
   text_qa    TEXT NOT NULL DEFAULT '',
   prompt     TEXT NOT NULL DEFAULT '',
   feedback   TEXT NOT NULL DEFAULT '',
+  flags      TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
   FOREIGN KEY (run_id) REFERENCES run(id)
 );
@@ -70,6 +71,10 @@ def conn():
 def init() -> None:
     with conn() as c:
         c.executescript(SCHEMA)
+        # additive migration for databases created before `flags` existed
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(variant)")}
+        if "flags" not in cols:
+            c.execute("ALTER TABLE variant ADD COLUMN flags TEXT NOT NULL DEFAULT ''")
 
 
 def _now() -> int:
@@ -125,13 +130,13 @@ def recent_runs(limit: int = 30) -> List[sqlite3.Row]:
 
 # ── variants ────────────────────────────────────────────────────────────────
 def add_variant(run_id: int, idx: int, style: str, filename: str = "",
-                error: str = "", text_qa=None, prompt: str = "") -> int:
+                error: str = "", text_qa=None, prompt: str = "", flags: str = "") -> int:
     with conn() as c:
         cur = c.execute(
             "INSERT INTO variant (run_id, idx, style, filename, status, error, text_qa,"
-            " prompt, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            " prompt, flags, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (run_id, idx, style, filename, "pending" if filename else "failed",
-             error, "" if text_qa is None else str(text_qa), prompt, _now()))
+             error, "" if text_qa is None else str(text_qa), prompt, flags, _now()))
         return cur.lastrowid
 
 

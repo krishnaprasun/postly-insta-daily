@@ -104,9 +104,12 @@ Return RAW JSON with exactly these keys:
                   portrait belongs on the post (a national leader's jayanti/punyatithi).
                   false for festivals, observances, and for anyone still living.>,
   "person_name_en": "<that person's full name in English, for the illustrator. Empty otherwise.>",
-  "portrait_concept": "<if show_person: 2-3 sentences describing a dignified portrait — their
-                        recognisable appearance, attire, era, posture, and the setting or symbols
-                        around them (charkha, tricolour, khadi, a lit lamp). Empty otherwise.>",
+  "portrait_concept": "<if show_person: 2-3 sentences describing a dignified portrait. LEAD WITH
+                        THE IDENTIFYING FEATURES a person would recognise them by — headwear
+                        (Tilak's red pagdi, Nehru's cap, Ambedkar's suit and spectacles), facial
+                        hair (Tilak's thick white moustache), spectacles, build, age, and the era's
+                        clothing. A generic old man in a dhoti is a failed portrait. Then the
+                        setting and symbols around them. Empty otherwise.>",
   "context": "<one line: what this occasion actually marks>",
   "mood": "<3-6 adjectives for the artwork's emotional register>",
   "visual_concept": "<2-3 sentences describing ONE subject to draw, isolated on white:
@@ -198,6 +201,7 @@ def build(ev: Dict) -> Dict:
     b["show_person"] = bool(b.get("show_person")) and not living and bool(b.get("portrait_concept"))
     if b["show_person"]:
         b["needs_human_check"] = True
+        b["likeness_of"] = b.get("person_name_en", "")
         b["check_reason"] = ((b.get("check_reason", "") + " | ") if b.get("check_reason") else "") + \
             "Generated likeness of a real person — check the portrait actually looks like them."
     b["needs_human_check"] = bool(b.get("needs_human_check")) or bool(ev.get("warnings"))
