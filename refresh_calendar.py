@@ -31,7 +31,7 @@ def main() -> int:
               "Looked in:\n  " + "\n  ".join(str(p) for p in DEFAULT_SOURCES))
         return 1
 
-    dst = config.DATA_DIR / "calendar" / "postly_calendar_clean.csv"
+    dst = config.ROOT / "calendar" / "postly_calendar_clean.csv"
     dst.parent.mkdir(parents=True, exist_ok=True)
     before = events.coverage()
     shutil.copyfile(src, dst)

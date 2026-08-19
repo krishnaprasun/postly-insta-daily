@@ -1,0 +1,12 @@
+# The local venv is macOS-built and ~300MB — copying it into a Linux image is
+# both useless and slow.
+.venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+.claude/
+# Runtime state belongs on the mounted disk, not baked into the image.
+data/images/
+data/*.db
+.env

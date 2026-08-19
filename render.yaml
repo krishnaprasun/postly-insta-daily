@@ -2,6 +2,8 @@ services:
   - type: web
     name: postly-insta-daily
     runtime: docker
+    # starter (not free): a free instance sleeps after inactivity, which kills the
+    # 07:00 IST scheduler, and free instances cannot mount a disk.
     plan: starter
     healthCheckPath: /healthz
     disk:
@@ -34,6 +36,9 @@ services:
         value: "7"
       - key: VARIANT_COUNT
         value: "5"
+      # Meta fetches the JPEG from this service; the Postly CDN re-encodes to WEBP
+      - key: IG_IMAGE_SOURCE
+        value: self
       # Notification (optional)
       - key: NOTIFY_CHANNEL
         value: none

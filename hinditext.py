@@ -17,9 +17,27 @@ _FONT_CANDIDATES = [
 
 
 def _font_path() -> str | None:
+    """Locate a Devanagari font.
+
+    The explicit candidates are tried first, then the system font tree is
+    searched. Hardcoding a Debian filename is brittle: if the package ships
+    NotoSansDevanagari-Regular but not -Bold, shaping returns None and EVERY
+    variant fails on a deploy that otherwise looks healthy.
+    """
+    import glob
     for p in _FONT_CANDIDATES:
         if p and os.path.exists(p):
             return p
+    for pat in ("/usr/share/fonts/**/NotoSansDevanagari*.ttf",
+                "/usr/share/fonts/**/NotoSerifDevanagari*.ttf",
+                "/usr/share/fonts/**/*Devanagari*.ttf",
+                "/usr/share/fonts/**/*Devanagari*.otf"):
+        hits = sorted(glob.glob(pat, recursive=True))
+        bold = [h for h in hits if "bold" in h.lower()]
+        if bold:
+            return bold[0]
+        if hits:
+            return hits[0]
     return None
 
 

@@ -1,13 +1,15 @@
 FROM python:3.11-slim
 
-# libraqm + a Devanagari font: without BOTH, Pillow cannot shape Hindi conjuncts
-# and every variant fails by design (see gen.py). Verified at /healthz after deploy.
+# Devanagari shaping needs BOTH a Devanagari face and raqm (Pillow's wheel bundles
+# raqm, libraqm0 is belt-and-braces). Without them every variant fails by design,
+# so the build below asserts it rather than letting the service start broken.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libraqm0 fonts-noto-devanagari fonts-noto-core \
+      libraqm0 fonts-noto-core fonts-indic \
     && rm -rf /var/lib/apt/lists/*
 
-ENV DEVANAGARI_FONT=/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf \
-    PYTHONUNBUFFERED=1 \
+# DEVANAGARI_FONT is deliberately unset: hinditext searches the font tree and
+# picks a bold Devanagari face, so differing package filenames still work.
+ENV PYTHONUNBUFFERED=1 \
     DATA_DIR=/data
 
 WORKDIR /app
@@ -16,9 +18,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Surface shaping status at build time — a green build with a red line here means
-# the image will start but refuse to generate.
-RUN python -c "import imaging; print('[build] devanagari shaping:', imaging.shaping_available())" || true
+# Fail the BUILD if Devanagari cannot be shaped — finding out at generation time
+# costs a day's post and a confusing debug session.
+RUN python -c "import imaging, sys; ok = imaging.shaping_available(); \
+    print('[build] devanagari shaping:', ok); sys.exit(0 if ok else 1)"
 
 EXPOSE 8000
 CMD ["gunicorn", "-w", "1", "-t", "600", "-b", "0.0.0.0:8000", "app:app"]

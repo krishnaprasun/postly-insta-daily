@@ -25,8 +25,11 @@ from typing import List, Dict, Optional
 import config
 import llm
 
+# The calendar ships WITH THE CODE, not on the mounted data disk. It is read-only
+# reference data, and putting it under DATA_DIR meant the deployed app looked for
+# it on an empty persistent disk while the copy in the image sat unused.
 CSV_PATH = Path(os.environ.get(
-    "CALENDAR_CSV", config.DATA_DIR / "calendar" / "postly_calendar_clean.csv"))
+    "CALENDAR_CSV", config.ROOT / "calendar" / "postly_calendar_clean.csv"))
 
 PRIORITY_RANK = {"P1": 0, "P2": 1, "P3": 2}
 TIER_RANK = {"T1": 0, "T2": 1, "T3": 2}
