@@ -26,7 +26,9 @@ TONE_RULES = """TONE RULES (these are not negotiable):
 - Festival / religious occasion -> warm, celebratory, devotional as appropriate to that faith.
 - National day -> dignified and patriotic, not jingoistic.
 - Jayanti (birth anniversary of someone DECEASED) -> remembrance and respect
-  ("जयंती पर शत्-शत् नमन"). NEVER "Happy Birthday", NEVER "जन्मदिन मुबारक".
+  ("जयंती पर शत्-शत् नमन", "पुण्य स्मरण"). NEVER "Happy Birthday", NEVER "जन्मदिन मुबारक".
+  And NEVER "श्रद्धांजलि" / "विनम्र श्रद्धांजलि": that word is homage to the DEAD on the day they
+  died. On a birth anniversary it is the wrong occasion word. A Jayanti honours the birth.
 - Punyatithi / Shraddhanjali (death anniversary) -> somber tribute
   ("विनम्र श्रद्धांजलि"). NEVER any celebratory word, NEVER "शुभकामनाएं".
 - Observance / awareness day -> light, useful, human.
@@ -208,12 +210,29 @@ def build(ev: Dict) -> Dict:
     if ev.get("warnings") and not b.get("check_reason"):
         b["check_reason"] = " | ".join(ev["warnings"])
 
+    name_all = (ev.get("event", "") + " " + ev.get("occasion", "") + " " +
+                ev.get("category", "") + " " + ev.get("type", "")).lower()
+    _punya = any(k in name_all for k in
+                 ("punyatithi", "punya tithi", "death anniversary", "shraddhanjali",
+                  "barsi", "smriti diwas"))
+    is_jayanti = ("jayanti" in name_all or "birth anniversary" in name_all) and not _punya
+
     # Safety net for the one-sentence rule. The model keeps the occasion word in
     # BOTH halves — "गांधी जयंती" + "की जयंती पर शत्-शत् नमन" prints as a stutter.
     # Any occasion word the suffix already carries is dropped from the name.
     for kw in ("जयंती", "पुण्यतिथि", "जन्मदिन", "दिवस", "पर्व"):
         if kw in b["occasion_hi"] and kw in b["suffix_hi"]:
             b["occasion_hi"] = " ".join(w for w in b["occasion_hi"].split() if w != kw)
+    # "श्रद्धांजलि" belongs to a punyatithi. The model still reaches for it on a
+    # jayanti, which is a category error in the copy even when the palette is right.
+    if is_jayanti:
+        for fld in ("prefix_hi", "suffix_hi", "blessing_hi"):
+            if "श्रद्धांजलि" in b.get(fld, ""):
+                b[fld] = " ".join(w for w in b[fld].split()
+                                  if "श्रद्धांजलि" not in w and w != "विनम्र").strip()
+        if not b["suffix_hi"]:
+            b["suffix_hi"] = "जयंती पर शत्-शत् नमन"
+
     occ_words = b["occasion_hi"].split()
     suf_words = b["suffix_hi"].split()
     if len(occ_words) > 1 and suf_words and occ_words[-1] == suf_words[0]:
