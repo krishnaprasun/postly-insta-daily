@@ -35,6 +35,10 @@ services:
         value: "7"
       - key: VARIANT_COUNT
         value: "5"
+      # Five 1080x1080 generations at once exhaust a small instance; the worker is
+      # killed mid-run and the day produces nothing.
+      - key: GEN_CONCURRENCY
+        value: "2"
       # Meta fetches the JPEG from this service; the Postly CDN re-encodes to WEBP
       - key: IG_IMAGE_SOURCE
         value: self

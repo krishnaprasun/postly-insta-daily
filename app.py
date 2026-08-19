@@ -238,14 +238,18 @@ def post_run(run_id):
 @app.route("/generate", methods=["POST"])
 @require_admin
 def generate():
+    """Kick off a run in the background.
+
+    Generation takes a couple of minutes; a hosting proxy cuts the request off
+    long before that and the worker gets killed mid-run, so this must not be
+    synchronous. The index polls for the run to appear.
+    """
     date_iso = (request.form.get("date") or daily.target_date()).strip()
     force = request.form.get("force") == "1"
-    res = daily.run_for(date_iso, force=force, notify_user=False)
-    if res.get("run_id"):
-        run = db.get_run(res["run_id"])
-        if run:
-            return redirect(url_for("review", token=run["review_token"]))
-    return jsonify(res)
+    threading.Thread(target=daily.run_for,
+                     kwargs={"date_iso": date_iso, "force": force, "notify_user": False},
+                     daemon=True).start()
+    return redirect(url_for("index", queued=date_iso))
 
 
 @app.route("/preview")

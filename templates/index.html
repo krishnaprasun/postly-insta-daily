@@ -5,6 +5,12 @@
   <span class="sub">generates {{ '%02d:%02d'|format(cfg.RUN_HOUR_IST, cfg.RUN_MINUTE_IST) }} IST ·
   {{ cfg.VARIANT_COUNT }} variants</span></header>
 
+{% if request.args.get('queued') %}
+<div class="banner b-warn">Generating the post for <b>{{ request.args.get('queued') }}</b> —
+  takes a couple of minutes. This page refreshes itself; the run appears below when it starts.</div>
+<meta http-equiv="refresh" content="15">
+{% endif %}
+
 {% if not ig.ready %}
 <div class="banner b-warn"><b>Instagram auto-posting is off.</b> {{ ig.missing | join('; ') }}.
   Approved posts are downloaded and posted by hand until this is set up.</div>
