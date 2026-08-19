@@ -18,8 +18,8 @@ Getting the credentials (one-time, needs the Instagram account owner):
     pages_read_engagement, then a LONG-LIVED page access token (~60 days).
   * IG_USER_ID is the Instagram Business account id (from
     GET /{page-id}?fields=instagram_business_account), not the @handle.
-Long-lived tokens expire — refresh_token_days_left() surfaces that before a post
-fails silently.
+Tokens can be invalidated (password change, revoked permission, app change), so
+token_days_left() surfaces expiry on /healthz before a post fails silently.
 """
 from __future__ import annotations
 
@@ -68,6 +68,29 @@ def _graph(path: str) -> str:
     return f"https://graph.facebook.com/{config.IG_GRAPH_VERSION}/{path}"
 
 
+def token_days_left():
+    """Days until the access token expires, or None if it never does / unknown.
+
+    A Page token derived from a long-lived user token normally does not expire,
+    but it can still be invalidated. Surfacing this on /healthz means a dead
+    token is noticed on a quiet morning rather than on a festival.
+    """
+    if not config.IG_ACCESS_TOKEN:
+        return None
+    try:
+        r = requests.get(_graph("debug_token"),
+                         params={"input_token": config.IG_ACCESS_TOKEN,
+                                 "access_token": config.IG_ACCESS_TOKEN}, timeout=20)
+        if r.status_code != 200:
+            return None
+        exp = (r.json().get("data") or {}).get("expires_at")
+        if not exp:                      # 0 or absent = does not expire
+            return None
+        return max(0, int((exp - time.time()) // 86400))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def public_image_url(variant_id: int) -> str:
     """The URL handed to Meta for a variant, served by this service.
 
@@ -103,7 +126,7 @@ def preflight() -> Dict:
 
     cdn_ok = bool(config.POSTLY_CDN_URL and config.POSTLY_CDN_ACCESS_TOKEN)
     out = {"ready": not missing, "missing": missing, "cdn_ready": cdn_ok,
-           "image_source": config.IG_IMAGE_SOURCE, "account": None}
+           "image_source": config.IG_IMAGE_SOURCE, "account": None, "token_days_left": None}
     if not missing:
         try:
             r = requests.get(_graph(config.IG_USER_ID),
@@ -111,6 +134,7 @@ def preflight() -> Dict:
                                      "access_token": config.IG_ACCESS_TOKEN}, timeout=20)
             if r.status_code == 200:
                 out["account"] = r.json().get("username")
+                out["token_days_left"] = token_days_left()
             else:
                 out["ready"] = False
                 out["missing"] = [f"Graph API rejected the token: {r.text[:200]}"]
