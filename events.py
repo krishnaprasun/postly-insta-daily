@@ -137,18 +137,36 @@ def _norm(r: Dict[str, str]) -> Dict:
     }
 
 
+_ROWS_CACHE = {"mtime": None, "rows": None}
+
+
+def _rows():
+    """Parsed calendar rows, cached on file mtime.
+
+    The CSV is ~4.8MB and 14k rows; the upcoming-days view would otherwise
+    re-parse it once per date rendered.
+    """
+    if not CSV_PATH.exists():
+        return []
+    mt = CSV_PATH.stat().st_mtime
+    if _ROWS_CACHE["mtime"] != mt:
+        with CSV_PATH.open(encoding="utf-8") as f:
+            _ROWS_CACHE["rows"] = list(csv.DictReader(f))
+        _ROWS_CACHE["mtime"] = mt
+    return _ROWS_CACHE["rows"] or []
+
+
 def coverage():
     """(first_date, last_date) the calendar CSV actually covers."""
     if not CSV_PATH.exists():
         return None, None
     lo = hi = None
-    with CSV_PATH.open(encoding="utf-8") as f:
-        for r in csv.DictReader(f):
-            d = r.get("Date", "")
-            if not d:
-                continue
-            lo = d if lo is None or d < lo else lo
-            hi = d if hi is None or d > hi else hi
+    for r in _rows():
+        d = r.get("Date", "")
+        if not d:
+            continue
+        lo = d if lo is None or d < lo else lo
+        hi = d if hi is None or d > hi else hi
     return lo, hi
 
 
@@ -161,12 +179,11 @@ def candidates(date_iso: str):
         print(f"[events] calendar CSV missing at {CSV_PATH}", flush=True)
         return [], []
     real, fallback = [], []
-    with CSV_PATH.open(encoding="utf-8") as f:
-        for r in csv.DictReader(f):
-            if r.get("Date") != date_iso or not _row_ok(r):
-                continue
-            n = _norm(r)
-            (fallback if r.get("Type", "") in FALLBACK_TYPES else real).append(n)
+    for r in _rows():
+        if r.get("Date") != date_iso or not _row_ok(r):
+            continue
+        n = _norm(r)
+        (fallback if r.get("Type", "") in FALLBACK_TYPES else real).append(n)
     real.sort(key=lambda x: x["_sort"])
     fallback.sort(key=lambda x: x["_sort"])
     return real, fallback
@@ -352,3 +369,43 @@ def pick(date_iso: str) -> Dict:
                   "Refresh data/calendar/postly_calendar_clean.csv from the Creative Tool."
                   if out_of_range else None),
     }
+
+
+def upcoming(from_iso: str, days: int = 14) -> List[Dict]:
+    """What the next `days` would generate, straight from the calendar.
+
+    Deliberately does NOT call pick(): that runs an LLM ranking and a leader
+    check per date, which is fine once a morning and far too slow for a page
+    listing a fortnight. This shows the curated Priority/Tier order instead, so
+    the headline occasion is right even though the final pick can reorder the
+    minor ones.
+    """
+    start = datetime.date.fromisoformat(from_iso)
+    lo, hi = coverage()
+    out = []
+    for i in range(days):
+        d = (start + datetime.timedelta(days=i))
+        iso = d.isoformat()
+        if lo and hi and not (lo <= iso <= hi):
+            out.append({"date": iso, "weekday": d.strftime("%a"), "top": None,
+                        "others": [], "quiet": True, "out_of_range": True})
+            continue
+        real, fb = candidates(iso)
+        real = [c for c in real if not is_blocked(c) and not is_international(c)]
+        seen, uniq = set(), []
+        for c in real:
+            key = frozenset(w.lower().strip(".,/") for w in c["event"].split() if len(w) > 3)
+            if any(len(key & s2) >= max(2, min(len(key), len(s2)) - 1) for s2 in seen):
+                continue
+            seen.add(key)
+            uniq.append(c)
+        top = uniq[0] if uniq else (fb[0] if fb else None)
+        out.append({
+            "date": iso,
+            "weekday": d.strftime("%a"),
+            "top": top,
+            "others": uniq[1:4],
+            "quiet": not uniq,
+            "out_of_range": False,
+        })
+    return out

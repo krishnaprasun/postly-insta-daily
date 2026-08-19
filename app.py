@@ -130,8 +130,12 @@ def index():
         rows.append({"run": r, "n_ok": sum(1 for v in vs if v["filename"]),
                      "n": len(vs),
                      "approved": next((v for v in vs if v["status"] == "approved"), None)})
+    by_date = {r["run"]["date_iso"]: r["run"] for r in rows}
+    ahead = events.upcoming(daily.today_ist(), 14)
+    for d in ahead:
+        d["run"] = by_date.get(d["date"])
     return render_template("index.html", rows=rows, ig=publisher.preflight(),
-                           today=daily.today_ist(), cfg=config)
+                           today=daily.today_ist(), cfg=config, ahead=ahead)
 
 
 @app.route("/r/<token>")

@@ -32,6 +32,44 @@
 </div>
 
 <div class="card">
+  <h2>Coming up</h2>
+  <div class="sub" style="margin-bottom:12px">What each day will be about, from the calendar.
+    Generate ahead if you want to review early.</div>
+  <table>
+    {% for d in ahead %}
+    <tr>
+      <td style="white-space:nowrap;width:118px">
+        <b>{{ d.date[8:] }}/{{ d.date[5:7] }}</b>
+        <span class="muted" style="font-size:12px">{{ d.weekday }}</span>
+        {% if d.date == today %}<span class="tag ok" style="margin-left:4px">today</span>{% endif %}
+      </td>
+      <td>
+        {% if d.out_of_range %}<span class="muted">outside calendar coverage</span>
+        {% elif d.top %}
+          <b>{{ d.top['event'] }}</b>
+          {% if d.quiet %}<span class="tag">generic</span>{% endif %}
+          {% if d.others %}
+            <div class="muted" style="font-size:12.5px;margin-top:2px">
+              also: {{ d.others | map(attribute='event') | join(' · ') }}</div>
+          {% endif %}
+        {% else %}<span class="muted">nothing notable</span>{% endif %}
+      </td>
+      <td style="width:150px;text-align:right">
+        {% if d.run %}
+          <a href="{{ url_for('review', token=d.run['review_token']) }}">Open →</a>
+        {% else %}
+          <form method="post" action="{{ url_for('generate') }}" style="display:inline">
+            <input type="hidden" name="date" value="{{ d.date }}">
+            <button class="btn sm">Generate</button>
+          </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
   <h2>Recent runs</h2>
   <table>
     <tr><th>Date</th><th>Occasion</th><th>Variants</th><th>Status</th><th></th></tr>
