@@ -224,18 +224,100 @@ def ornament(draw: ImageDraw.ImageDraw, cx: int, y: int, w: int, color=GOLD) -> 
 
 
 # ── artwork cutout ──────────────────────────────────────────────────────────
-def cutout(art: Image.Image, tolerance: int = 26) -> Image.Image:
-    """Drop the background the model was asked to render on white.
+def _flat_white(art: Image.Image, lum_min: int, chroma_max: int, clean: int = 5) -> Image.Image:
+    """Mask of flat near-white pixels — the render background, not white subject parts.
 
-    Flood-fills inward from the edges over the LUMINANCE image with a tolerance,
-    rather than keying every light pixel. Two reasons:
-      * keying by brightness would eat white flowers or a white kurta inside the
-        subject,
-      * the model's "white" background is often a soft off-white gradient with a
-        contact shadow, which a hard threshold misses entirely — leaving a
-        visible rectangle pasted on the cream canvas.
-    Whatever the flood does not reach is kept, and the edge is feathered so a
-    failed key degrades to a soft blend instead of a hard box.
+    A white kurta or a pearl is white but SHADED: within one region its
+    luminance varies and its darker pixels break the mask up. The rendered
+    background is flat. Eroding then dilating keeps large flat fields and
+    deletes the speckle that shading produces, so the subject survives.
+    """
+    r, g, b = art.convert("RGB").split()
+    lum = art.convert("L")
+    mx = ImageChops.lighter(ImageChops.lighter(r, g), b)
+    mn = ImageChops.darker(ImageChops.darker(r, g), b)
+    chroma = ImageChops.subtract(mx, mn)
+    bright = lum.point(lambda v: 255 if v >= lum_min else 0)
+    neutral = chroma.point(lambda v: 255 if v <= chroma_max else 0)
+    mask = ImageChops.multiply(bright, neutral)
+    if clean:
+        mask = mask.filter(ImageFilter.MinFilter(clean))   # erode: kill speckle
+        mask = mask.filter(ImageFilter.MaxFilter(clean))   # dilate: restore area
+    return mask
+
+
+def _drop_shadow_islands(art: Image.Image, alpha: Image.Image,
+                         max_frac: float = 0.06) -> Image.Image:
+    """Delete small detached pale islands — the contact shadow the model drew.
+
+    The model is told not to cast a shadow onto the background and mostly obeys,
+    but when it does the blob averages ~228 luminance: too dark for a whiteness
+    threshold to catch without also eating the shaded folds of a white kurta.
+
+    Structure separates them instead. The shadow is a SEPARATE island from the
+    subject, small, pale and colourless; the subject is one big coloured mass.
+    Islands are labelled at quarter resolution (fast, and the decision is about
+    whole blobs, not edges), and only small pale neutral ones are dropped.
+    """
+    import numpy as np
+
+    w, h = alpha.size
+    sw, sh = max(64, w // 4), max(64, h // 4)
+    small = alpha.resize((sw, sh), Image.NEAREST).point(lambda v: 255 if v > 128 else 0)
+    rgb = np.asarray(art.convert("RGB").resize((sw, sh), Image.BILINEAR)).astype(np.int16)
+
+    work = small.copy()
+    labels = {}
+    label = 2
+    for y in range(0, sh, 2):
+        for x in range(0, sw, 2):
+            if work.getpixel((x, y)) == 255 and label < 250:
+                ImageDraw.floodfill(work, (x, y), label, thresh=0)
+                labels[label] = True
+                label += 1
+    if len(labels) < 2:
+        return alpha
+
+    arr = np.asarray(work)
+    areas = {lab: int((arr == lab).sum()) for lab in labels}
+    biggest = max(areas.values()) if areas else 0
+    if not biggest:
+        return alpha
+
+    drop = np.zeros((sh, sw), dtype=bool)
+    for lab, area in areas.items():
+        if area >= biggest * max_frac:
+            continue
+        sel = arr == lab
+        if not sel.any():
+            continue
+        px = rgb[sel]
+        lum = px.mean(axis=1).mean()
+        chroma = (px.max(axis=1) - px.min(axis=1)).mean()
+        if lum > 200 and chroma < 24:          # pale and colourless => shadow
+            drop |= sel
+    if not drop.any():
+        return alpha
+
+    dropmask = Image.fromarray((drop * 255).astype("uint8"), "L").resize(
+        (w, h), Image.BILINEAR).filter(ImageFilter.GaussianBlur(2))
+    return ImageChops.subtract(alpha, dropmask)
+
+
+def cutout(art: Image.Image, tolerance: int = 26) -> Image.Image:
+    """Drop the white background the model was asked to render on.
+
+    Two passes, because either alone is wrong:
+
+    1. Flood inward from the edges. This handles the surrounding background
+       without touching white inside the subject.
+    2. Remove ENCLOSED flat-white regions too. A rakhi is a loop and a garland
+       is a ring — the background shows through the middle, and a border flood
+       can never reach it. Those islands survived as white blobs, which is
+       invisible on a cream canvas and glaring on a maroon one.
+
+    Pass 2 keys on flatness rather than brightness so white cloth and pearls,
+    which are shaded, are kept.
     """
     art = art.convert("RGB")
     w, h = art.size
@@ -247,20 +329,24 @@ def cutout(art: Image.Image, tolerance: int = 26) -> Image.Image:
              (w // 4, 0), (3 * w // 4, 0), (w // 4, h - 1), (3 * w // 4, h - 1)]
     for sx, sy in seeds:
         try:
-            if marker.getpixel((sx, sy)) >= 200:      # only flood from light edges
+            if marker.getpixel((sx, sy)) >= 200:
                 ImageDraw.floodfill(marker, (sx, sy), 1, thresh=tolerance)
         except Exception:  # noqa: BLE001
             continue
+    exterior = marker.point(lambda p: 0 if p <= 1 else 255)
 
-    alpha = marker.point(lambda p: 0 if p <= 1 else 255)
+    enclosed = _flat_white(art, lum_min=236, chroma_max=14, clean=5)
+    keep = ImageChops.subtract(exterior, enclosed)
 
-    # Feather the outer border so an unsuccessful key blends rather than boxes.
     edge = Image.new("L", (w, h), 0)
     pad = max(6, int(min(w, h) * 0.02))
     ImageDraw.Draw(edge).rectangle([pad, pad, w - 1 - pad, h - 1 - pad], fill=255)
     edge = edge.filter(ImageFilter.GaussianBlur(pad * 0.8))
-    alpha = ImageChops.multiply(alpha, edge)
-    alpha = alpha.filter(ImageFilter.GaussianBlur(1.2))
+    alpha = ImageChops.multiply(keep, edge).filter(ImageFilter.GaussianBlur(1.2))
+    try:
+        alpha = _drop_shadow_islands(art, alpha)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[cutout] island pass skipped: {exc}", flush=True)
 
     out = art.convert("RGBA")
     out.putalpha(alpha)
@@ -271,10 +357,9 @@ def is_white_bg(art: Image.Image, min_frac: float = 0.70) -> bool:
     """Is this artwork actually isolated on white, as the prompt asked?
 
     The model honours the white-background instruction most of the time, but for
-    contextual photographic subjects (a chai cup) it often renders a full scene.
-    Flood-cutting a scene tears ragged holes in it, which looks far worse than
-    not cutting at all — so the border is sampled first and the caller picks a
-    treatment.
+    contextual subjects it sometimes renders a full scene. Cutting a scene tears
+    ragged holes in it, so the border is sampled first and the caller picks
+    between a cutout and a shaped frame.
     """
     lum = art.convert("L")
     w, h = lum.size
@@ -291,14 +376,62 @@ def is_white_bg(art: Image.Image, min_frac: float = 0.70) -> bool:
     return sum(1 for v in pts if v >= 235) / len(pts) >= min_frac
 
 
-def photo_card(art: Image.Image, radius: int = 34) -> Image.Image:
-    """Treatment for artwork that came back as a full scene: a rounded photo card."""
+def _framed(art: Image.Image, mask: Image.Image, ring, ring_w: int,
+            outline_path) -> Image.Image:
+    """Apply a shaped mask plus a decorative ring, on a transparent canvas."""
     im = art.convert("RGBA")
-    mask = Image.new("L", im.size, 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, im.width - 1, im.height - 1],
-                                           radius=radius, fill=255)
-    im.putalpha(mask)
-    return im
+    im.putalpha(mask.filter(ImageFilter.GaussianBlur(0.8)))
+    pad = ring_w * 3
+    out = Image.new("RGBA", (im.width + pad * 2, im.height + pad * 2), (0, 0, 0, 0))
+    out.alpha_composite(im, (pad, pad))
+    if ring and ring_w:
+        d = ImageDraw.Draw(out, "RGBA")
+        outline_path(d, pad, ring, ring_w)
+    return out
+
+
+def medallion(art: Image.Image, ring=GOLD, ring_w: int = 9) -> Image.Image:
+    """Circular medallion treatment.
+
+    Used when the model ignored the white-background instruction. A rounded
+    rectangle reads as a photo box pasted onto the design; a medallion reads as
+    a deliberate frame and sits far better on an ornamented canvas.
+    """
+    side = min(art.size)
+    art = art.convert("RGB").crop(((art.width - side) // 2, (art.height - side) // 2,
+                                   (art.width - side) // 2 + side,
+                                   (art.height - side) // 2 + side))
+    mask = Image.new("L", (side, side), 0)
+    ImageDraw.Draw(mask).ellipse([0, 0, side - 1, side - 1], fill=255)
+
+    def ring_path(d, pad, col, w):
+        d.ellipse([pad - w // 2, pad - w // 2, pad + side + w // 2, pad + side + w // 2],
+                  outline=(*col, 255), width=w)
+        d.ellipse([pad - w * 2, pad - w * 2, pad + side + w * 2, pad + side + w * 2],
+                  outline=(*col, 110), width=2)
+    return _framed(art, mask, ring, ring_w, ring_path)
+
+
+def arch(art: Image.Image, ring=GOLD, ring_w: int = 9) -> Image.Image:
+    """Temple-arch treatment — rounded top, straight base."""
+    w, h = art.size
+    tgt_w = int(h * 0.78)
+    if w > tgt_w:
+        art = art.crop(((w - tgt_w) // 2, 0, (w - tgt_w) // 2 + tgt_w, h))
+    w, h = art.size
+    mask = Image.new("L", (w, h), 0)
+    d = ImageDraw.Draw(mask)
+    r = w // 2
+    d.pieslice([0, 0, w - 1, w - 1], 180, 360, fill=255)
+    d.rectangle([0, r, w - 1, h - 1], fill=255)
+
+    def ring_path(dd, pad, col, rw):
+        dd.arc([pad - rw // 2, pad - rw // 2, pad + w + rw // 2, pad + w + rw // 2],
+               180, 360, fill=(*col, 255), width=rw)
+        dd.line([(pad - rw // 2, pad + r), (pad - rw // 2, pad + h)], fill=(*col, 255), width=rw)
+        dd.line([(pad + w + rw // 2, pad + r), (pad + w + rw // 2, pad + h)],
+                fill=(*col, 255), width=rw)
+    return _framed(art, mask, ring, ring_w, ring_path)
 
 
 def defringe(im: Image.Image, px: int = 2) -> Image.Image:

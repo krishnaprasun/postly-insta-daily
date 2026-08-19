@@ -42,9 +42,18 @@ symbols, flowers. Ordinary unnamed people are fine when the occasion calls for i
 SUBJECT_SYSTEM = """You are producing ONE isolated artwork element for an Indian brand's social
 template. You are NOT designing a finished post.
 
-BACKGROUND (critical): pure plain WHITE (#FFFFFF), completely empty. No scene, no room, no floor,
-no gradient, no texture, no border, no vignette, no shadow cast onto the background. The subject
-must sit on clean white like a product cutout, so it can be composited onto a template.
+BACKGROUND (critical, this is the single most important instruction): SEAMLESS PURE WHITE
+(#FFFFFF) filling every pixel that is not the subject itself.
+
+Think e-commerce packshot on an infinite white sweep. Specifically FORBIDDEN:
+  - any surface the subject rests on — no table, no cloth, no plate, no cushion, no ground
+  - any room, wall, window, sky, backdrop or setting
+  - any gradient, tint, texture, paper grain, vignette or coloured light on the background
+  - any drop shadow, contact shadow or reflection falling onto the background
+  - any border, frame, edge or corner decoration
+The subject FLOATS on empty white. If the concept normally implies a setting, drop the setting
+entirely and render only the object itself. A background that is off-white, cream, grey or
+softly lit counts as a FAILURE.
 
 FRAMING: compose SQUARE, 1:1. A wide letterbox composition leaves the subject short and stranded
 when it is placed into a side column.

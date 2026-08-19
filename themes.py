@@ -204,7 +204,7 @@ THEMES: Dict[str, Dict] = {
     "ivory-botanical": {
         "paint": _floral_cream, "dark": False, "kind": "subject", "mirror": False,
         "acc1": bk.GREEN, "acc2": bk.GOLD, "ink": bk.NAVY, "body": bk.INK,
-        "orn": bk.GOLD, "bar": bk.GREEN,
+        "orn": bk.GOLD, "bar": bk.GREEN, "frame": "medallion",
     },
     # 2. the model's backdrop, type on a white card, teal + gold
     "scene-card": {
@@ -216,7 +216,7 @@ THEMES: Dict[str, Dict] = {
     "royal-maroon": {
         "paint": _royal_maroon, "dark": True, "kind": "subject", "mirror": True,
         "acc1": (255, 205, 108), "acc2": (255, 252, 244), "ink": (255, 250, 238),
-        "body": (238, 228, 210), "orn": (255, 205, 108), "bar": bk.GOLD,
+        "body": (238, 228, 210), "orn": (255, 205, 108), "bar": bk.GOLD, "frame": "arch",
     },
     # 4. the model's backdrop under an indigo wash, amber + white
     "scene-wash": {
@@ -230,6 +230,7 @@ THEMES: Dict[str, Dict] = {
         "paint": _saffron_sunburst, "dark": True, "kind": "subject", "mirror": False,
         "acc1": (255, 255, 255), "acc2": (122, 22, 40), "ink": (255, 250, 240),
         "body": (255, 240, 220), "orn": (255, 246, 214), "bar": (132, 26, 46),
+        "frame": "medallion",
     },
 }
 

@@ -204,7 +204,7 @@ def _text_block(brief: Dict, th: Dict, max_w: int, scale: float = 1.0,
 
 
 def _fit_block(brief: Dict, th: Dict, max_w: int, max_h: int, center: bool = True,
-               cap: float = 1.25) -> Optional[Image.Image]:
+               cap: float = 1.35) -> Optional[Image.Image]:
     """Largest text block that still fits the space.
 
     A fixed scale was leaving a third of the frame empty on short copy and
@@ -269,10 +269,14 @@ def _layout_hero(canvas, art, brief, th, mirror=False):
 def _layout_banner(canvas, art, brief, th):
     top = _header(canvas, th, centered=True)
     bottom = _footer(canvas, th, compact=True)
-    a = bk.scale_to(bk.trim(art), int(PX * 0.74), int((bottom - top) * 0.50))
-    canvas.alpha_composite(a, ((PX - a.width) // 2, bottom - a.height))
-    avail = bottom - a.height - top - 16
-    blk = _fit_block(brief, th, PX - MARGIN * 2 - 40, avail, center=True)
+    # Wide artwork lands here. Let it run nearly edge to edge and let the type
+    # take the rest — the earlier split left both the art and the type undersized.
+    a = bk.scale_to(bk.trim(art), int(PX * 0.92), int((bottom - top) * 0.46))
+    canvas.alpha_composite(a, ((PX - a.width) // 2, bottom - a.height + 4))
+    _ground_shadow(canvas, (PX - a.width) // 2 + int(a.width * 0.14), bottom + 6,
+                   int(a.width * 0.72), th["dark"])
+    avail = bottom - a.height - top - 10
+    blk = _fit_block(brief, th, PX - MARGIN * 2 - 20, avail, center=True, cap=1.7)
     if blk is None:
         return False
     canvas.alpha_composite(blk, ((PX - blk.width) // 2, top + max(0, (avail - blk.height) // 2)))
