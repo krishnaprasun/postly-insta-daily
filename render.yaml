@@ -33,7 +33,7 @@ services:
       - key: RUN_HOUR_IST
         value: "7"
       - key: VARIANT_COUNT
-        value: "4"
+        value: "5"
       # Notification (optional)
       - key: NOTIFY_CHANNEL
         value: none

@@ -38,9 +38,9 @@ for _p in (DATA_DIR, IMAGE_DIR):
 
 # ── Generation ──────────────────────────────────────────────────────────────
 # LiteLLM (Classplus proxy) — llm.py reads LITELLM_* straight from os.environ.
-VARIANT_COUNT = int(os.environ.get("VARIANT_COUNT", "4"))
+VARIANT_COUNT = int(os.environ.get("VARIANT_COUNT", "5"))
 CANVAS_PX = int(os.environ.get("CANVAS_PX", "1080"))          # 1:1 square, 1080x1080
-GEN_CONCURRENCY = int(os.environ.get("GEN_CONCURRENCY", "4"))
+GEN_CONCURRENCY = int(os.environ.get("GEN_CONCURRENCY", "5"))
 GEN_TIMEOUT = int(os.environ.get("GEN_TIMEOUT", "180"))
 BRAND_HANDLE = os.environ.get("BRAND_HANDLE", "@postly")
 BRAND_NAME = os.environ.get("BRAND_NAME", "Postly")

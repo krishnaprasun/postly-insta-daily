@@ -77,22 +77,27 @@ devotional setting, delicate particles or bokeh. Premium editorial finish, never
 
 
 VARIANTS = [
-    {"name": "Floral cutout", "mode": "subject", "theme": "floral-cream",
-     "direction": "STYLE: photorealistic, warm natural light, rich real textures, premium "
-                  "product-photography finish on pure white."},
+    {"name": "Ivory botanical", "mode": "subject", "theme": "ivory-botanical",
+     "direction": "STYLE: photorealistic, clean daylight, crisp real textures, premium "
+                  "product-photography finish on pure white. Fresh and airy."},
     {"name": "Scene card", "mode": "scene", "theme": "scene-card", "zone": "LEFT HALF",
      "opposite": "right half",
-     "direction": "STYLE: photorealistic and cinematic — soft depth of field, warm golden light, "
-                  "foliage or florals framing the top-right, a devotional or festive Indian "
-                  "setting with real depth behind the subject."},
-    {"name": "Deep festive", "mode": "subject", "theme": "deep-festive",
-     "direction": "STYLE: ornate and jewel-like — gold filigree, intricate detailing, marigold and "
-                  "diya accents, deep saturated colour, dramatic rim lighting on pure white."},
+     "direction": "STYLE: photorealistic and cinematic — soft depth of field, warm golden hour "
+                  "light, foliage or florals framing the top-right, a real Indian setting with "
+                  "genuine depth behind the subject."},
+    {"name": "Royal maroon", "mode": "subject", "theme": "royal-maroon",
+     "direction": "STYLE: opulent and jewel-like — heavy gold filigree, intricate metalwork, "
+                  "gemstone accents, dramatic rim lighting and deep shadow. Regal and ornate, "
+                  "isolated on pure white."},
     {"name": "Painted scene", "mode": "scene", "theme": "scene-wash", "zone": "BOTTOM HALF",
      "opposite": "top half",
-     "direction": "STYLE: rich hand-painted illustration — luminous traditional Indian palette, "
-                  "decorative border motifs, mandala or rangoli geometry worked into the setting, "
-                  "painterly glow and ornament."},
+     "direction": "STYLE: rich hand-painted illustration at night or dusk — luminous lamps and "
+                  "moonlight, decorative border motifs, mandala or rangoli geometry worked into "
+                  "the setting, deep blues and violets with warm lamp glow."},
+    {"name": "Saffron graphic", "mode": "subject", "theme": "saffron-sunburst",
+     "direction": "STYLE: bold flat-graphic vector treatment — clean geometric shapes, strong "
+                  "silhouette, minimal detail, confident poster art. High contrast, few colours, "
+                  "isolated on pure white."},
 ]
 
 

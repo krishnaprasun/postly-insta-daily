@@ -68,15 +68,18 @@ def run_for(date_iso: Optional[str] = None, force: bool = False,
         run_id = db.create_run(date_iso, ev, b)
         print(f"[daily] run {run_id}: {date_iso} -> QUIET DAY, generic content", flush=True)
         total = n or config.VARIANT_COUNT
-        per = max(1, total // len(briefs))
-        results = []
+        # Split the slots across the generic briefs, giving each a distinct block
+        # of variant indices so every slot still lands on its own theme.
+        base, extra = divmod(total, len(briefs))
+        results, cursor = [], 0
         for gi, gb in enumerate(briefs):
-            got = gen.build_variants(gb, n=per)
-            for r in got:
-                r["index"] = gi * per + r["index"]
+            count = base + (1 if gi < extra else 0)
+            idx = list(range(cursor, cursor + count))
+            cursor += count
+            for r in gen.build_variants(gb, indices=idx):
                 r["brief"] = gb
                 r["style"] = f"{gen_events[gi]['category']} · {r['style']}"
-            results.extend(got)
+                results.append(r)
     else:
         b = brief_mod.build(ev)
         run_id = db.create_run(date_iso, ev, b)

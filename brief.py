@@ -139,6 +139,7 @@ def _fallback(ev: Dict) -> Dict:
         "show_person": False,
         "person_name_en": "",
         "portrait_concept": "",
+        "muted": tribute,
         "context": ev.get("notes", "")[:160],
         "mood": "restrained, respectful" if tribute else "warm, festive",
         "visual_concept": f"A respectful symbolic composition for {name}.",
@@ -178,6 +179,18 @@ def build(ev: Dict) -> Dict:
               "caption_hi", "caption_en", "occasion_en", "person_name_en", "portrait_concept"):
         b[k] = str(b.get(k, "")).strip()
 
+    # Palette decision, made deterministically from the OCCASION rather than from
+    # the model's tone word. A Punyatithi (death anniversary) is muted. A Jayanti
+    # is a celebration of the person's birth and stays festive — greying it out
+    # reads as mourning on the wrong day. The copy stays respectful either way.
+    name = (ev.get("event", "") + " " + ev.get("occasion", "") + " " +
+            ev.get("category", "") + " " + ev.get("type", "")).lower()
+    is_punya = any(k in name for k in
+                   ("punyatithi", "punya tithi", "death anniversary", "shraddhanjali",
+                    "shraddhanjali", "barsi", "smriti diwas"))
+    is_jayanti = ("jayanti" in name or "birth anniversary" in name) and not is_punya
+    b["muted"] = bool(is_punya or (ev.get("tone") == "tribute_somber" and not is_jayanti))
+
     # A likeness only goes out for someone the calendar agrees is no longer living;
     # an AI portrait of a living person on a "jayanti" post is the wrong image AND
     # the wrong framing.
@@ -191,12 +204,17 @@ def build(ev: Dict) -> Dict:
     if ev.get("warnings") and not b.get("check_reason"):
         b["check_reason"] = " | ".join(ev["warnings"])
 
-    # Safety net for the one-sentence rule: the model still occasionally ends the
-    # name with the same word the suffix opens with ("गांधी जयंती" + "जयंती पर नमन").
+    # Safety net for the one-sentence rule. The model keeps the occasion word in
+    # BOTH halves — "गांधी जयंती" + "की जयंती पर शत्-शत् नमन" prints as a stutter.
+    # Any occasion word the suffix already carries is dropped from the name.
+    for kw in ("जयंती", "पुण्यतिथि", "जन्मदिन", "दिवस", "पर्व"):
+        if kw in b["occasion_hi"] and kw in b["suffix_hi"]:
+            b["occasion_hi"] = " ".join(w for w in b["occasion_hi"].split() if w != kw)
     occ_words = b["occasion_hi"].split()
     suf_words = b["suffix_hi"].split()
     if len(occ_words) > 1 and suf_words and occ_words[-1] == suf_words[0]:
         b["occasion_hi"] = " ".join(occ_words[:-1])
+    b["occasion_hi"] = b["occasion_hi"].strip()
 
     # occasion_hi is the hero of the template — without it there is no post
     if not b["occasion_hi"]:

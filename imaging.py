@@ -53,9 +53,13 @@ def _crop_active(sq: Image.Image) -> Image.Image:
     return sq.crop(bbox) if bbox else sq
 
 
-def _is_tribute(brief: Dict) -> bool:
-    return str(brief.get("tone", "")).lower() in (
-        "tribute", "tribute_somber", "remembrance", "shraddhanjali")
+def _is_muted(brief: Dict) -> bool:
+    """Muted palette = death anniversary only. brief.py decides this from the
+    occasion itself; the model's tone word says "remembrance" for a Jayanti too,
+    which would wrongly grey out a birth anniversary."""
+    if "muted" in brief:
+        return bool(brief["muted"])
+    return str(brief.get("tone", "")).lower() in ("tribute", "tribute_somber", "shraddhanjali")
 
 
 # ── header / footer ─────────────────────────────────────────────────────────
@@ -253,11 +257,12 @@ def _layout_scene_card(canvas, brief, th):
 
 def _layout_scene_wash(canvas, brief, th):
     """Backdrop under a dark wash, type centred over it."""
+    wr, wg, wb = th.get("wash", (14, 10, 24))
     wash = Image.new("RGBA", (PX, PX), (0, 0, 0, 0))
     d = ImageDraw.Draw(wash, "RGBA")
     for y in range(PX):
         t = y / PX
-        d.line([(0, y), (PX, y)], fill=(14, 10, 24, int(70 + 150 * (t ** 1.3))))
+        d.line([(0, y), (PX, y)], fill=(wr, wg, wb, int(70 + 150 * (t ** 1.3))))
     canvas.alpha_composite(wash)
 
     top = _header(canvas, th, centered=True, scrim=True)
@@ -280,7 +285,7 @@ def layout_name(i: int) -> str:
 def compose(art_bytes: bytes, brief: Dict, variant: int = 0) -> Tuple[bytes, Dict]:
     v = prompts.variant(variant)
     th = themes.theme(v["theme"])
-    tribute = _is_tribute(brief)
+    tribute = _is_muted(brief)
     if tribute:
         th = themes.for_tribute(th)
     mode = ""
@@ -301,7 +306,7 @@ def compose(art_bytes: bytes, brief: Dict, variant: int = 0) -> Tuple[bytes, Dic
                 art = bk.defringe(art)
         else:
             art, mode = bk.photo_card(_crop_active(sq)), "card"
-        ok = _layout_hero(canvas, art, brief, th, mirror=(variant % 4 == 2))
+        ok = _layout_hero(canvas, art, brief, th, mirror=bool(th.get("mirror")))
 
     notes = {"shaping": bool(ok), "theme": v["theme"], "mode": v["mode"],
              "art": mode, "tribute": tribute}

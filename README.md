@@ -55,20 +55,31 @@ four times — useless for choosing. Each variant now gets its own ground, palet
 and decoration (`themes.py`), and asks the model for a different *kind* of image
 (`prompts.py`):
 
-| variant | canvas | the model returns |
-|---|---|---|
-| Floral cutout | light botanical cream, mandala corner | subject isolated on white |
-| Scene card | the model's backdrop, full-bleed | a designed scene, left half calm |
-| Deep festive | dark jewel ground, gold bokeh | subject isolated on white |
-| Painted scene | the model's backdrop under a wash | a painted scene, bottom half calm |
+Five templates a day, each with its own ground **and palette**:
+
+| # | template | ground | type colours | the model returns |
+|---|---|---|---|---|
+| 1 | Ivory botanical | cream, leaf corners, gold mandala | green + gold | subject on white |
+| 2 | Scene card | its backdrop, full-bleed | teal + gold on a white card | scene, left half calm |
+| 3 | Royal maroon | deep maroon→plum, gold bokeh | gold + cream | subject on white |
+| 4 | Painted scene | its backdrop under an indigo wash | amber + white | night scene, bottom calm |
+| 5 | Saffron graphic | saffron sunburst rays | white + deep maroon | flat vector subject |
+
+The variant index selects the theme, so a quiet day that splits five slots across
+two generic briefs must pass explicit non-overlapping indices — otherwise both
+briefs render on themes 1 and 2 and the day's options collide.
 
 On scene themes the logo is drawn white over a soft top scrim — a navy wordmark
 on an arbitrary photographic backdrop is unreadable, and which backdrop comes
 back is not knowable in advance. Cutouts get their alpha eroded before landing on
 a dark ground, or the white rim from the keyed background shows as a halo.
 
-Tributes override both the ground **and** the type colours; without the second
-half a punyatithi could go out set in festive green and gold.
+**Punyatithi is muted; Jayanti is not.** A death anniversary overrides both the
+ground and the type colours. A birth anniversary stays festive — greying it out
+reads as mourning on the wrong day — while the copy stays respectful either way
+(`जयंती पर शत्-शत् नमन`, never "Happy Birthday"). The decision is made in
+`brief.py` from the occasion itself, not from the model's tone word, which says
+"remembrance" for both.
 
 ## Portraits of leaders
 
