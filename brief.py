@@ -39,10 +39,10 @@ GENERIC_RULES = """
 THIS IS GENERIC DAILY CONTENT, not an event announcement. Phrase it as an everyday post:
 - Good morning: occasion_hi is "सुप्रभात", prefix_hi is EMPTY, and suffix_hi is a day-wish such as
   "आपका दिन मंगलमय हो!" — never "की हार्दिक शुभकामनाएं" (you do not congratulate someone on a morning).
-- Weekday deity: occasion_hi is ONLY the deity's name in Hindi ("श्री गणेश", "हनुमान जी",
-  "शनि देव", "माँ लक्ष्मी"), prefix_hi is EMPTY or a short day word ("आज है"), and suffix_hi is a
-  blessing that grammatically follows that name — "की कृपा आप पर बनी रहे". Never put day words
-  like "शनिवार का आशीर्वाद" in occasion_hi: it will not join with the suffix.
+- Weekday deity: occasion_hi is EXACTLY the deity name given below in DEITY (HINDI). Never the
+  weekday — "गुरुवार" in the headline slot is wrong; the post is about the deity, not the day.
+  prefix_hi is "आप सभी पर" or EMPTY, and suffix_hi must begin with "की" so it reads on from the
+  name: "की कृपा आप पर बनी रहे".
 """
 
 
@@ -59,7 +59,8 @@ CURATED TONE: {ev.get('tone', '')}   OCCASION KIND: {ev.get('occasion', '')}
 AUDIENCE: {ev.get('audience', '')}
 EDITORIAL HOOK (from the calendar): {ev.get('hook', '')}
 BACKGROUND NOTES: {ev.get('notes', '')[:400]}
-DEITY (if any): {ev.get('deity', '')}{warn}
+DEITY (if any): {ev.get('deity', '')}
+DEITY (HINDI) — use this EXACTLY as occasion_hi for a weekday deity post: {ev.get('deity_hi', '')}{warn}
 
 {TONE_RULES}
 {GENERIC_RULES if ev.get('_generic') else ''}
@@ -84,7 +85,13 @@ Return RAW JSON with exactly these keys:
                    blessing or greeting words — no कृपा, no शुभकामनाएं, no नमन, no आशीर्वाद —
                    those belong in suffix_hi, and repeating them reads as a duplication
                    ('शनिदेव कृपा' + 'की कृपा आप पर बनी रहे').>",
-  "prefix_hi": "<short lead-in line, usually 'आप सभी को'. EMPTY STRING for a tribute.>",
+  "prefix_hi": "<short lead-in line. It is printed ABOVE the name and read as part of the SAME
+                 sentence, so it must agree with suffix_hi:
+                   'की हार्दिक शुभकामनाएं!'  -> prefix 'आप सभी को'   (आप सभी को X की शुभकामनाएं ✓)
+                   'की कृपा आप पर बनी रहे'   -> prefix 'आप सभी पर'  or EMPTY
+                   BAD: 'आप सभी को' + 'साईं बाबा' + 'की कृपा बनी रहे'  — needs पर, not को.
+                 Read prefix + name + suffix aloud as one line before answering. EMPTY for a
+                 tribute.>",
   "suffix_hi": "<the line that follows the name. Festival: 'की हार्दिक शुभकामनाएं!'.
                  Jayanti of someone deceased: 'जयंती पर शत्-शत् नमन'.
                  Punyatithi: 'पुण्यतिथि पर विनम्र श्रद्धांजलि'. MAX 5 words.
@@ -99,6 +106,10 @@ Return RAW JSON with exactly these keys:
                  change occasion_hi to a plain name so that they do.>",
   "blessing_hi": "<one warm closing line in Hindi, MAX 14 words. For a tribute, a line of
                    remembrance instead — never a blessing for prosperity.>",
+  "blessing_variants": ["<FIVE different closing lines, same occasion and tone, each MAX 14 words.
+                   One is used per design, so they must be genuinely DIFFERENT thoughts — not the
+                   same sentence reworded. Vary the angle: a blessing, a wish for the family, a
+                   line about the day's meaning, a warm greeting, a short reflection.>"],
   "quote_hi": "<ONLY for a good-morning or generic motivational post: a short Hindi quote or
                 suvichar, 1-2 lines, MAX 20 words, that a person would actually forward. Real
                 sentiment, not a fortune cookie. EMPTY STRING for every other kind of occasion.>",
@@ -140,6 +151,7 @@ def _fallback(ev: Dict) -> Dict:
         "prefix_hi": "" if tribute else "आप सभी को",
         "suffix_hi": "विनम्र श्रद्धांजलि" if tribute else "की हार्दिक शुभकामनाएं!",
         "blessing_hi": "",
+        "blessing_variants": [],
         "quote_hi": "",
         "show_person": False,
         "person_name_en": "",
@@ -180,6 +192,11 @@ def build(ev: Dict) -> Dict:
         tags = [t.strip() for t in tags.replace("#", "").split() if t.strip()]
     b["hashtags"] = [str(t).lstrip("#").strip()[:40] for t in tags if str(t).strip()][:12]
 
+    bv = b.get("blessing_variants") or []
+    if isinstance(bv, str):
+        bv = [bv]
+    b["blessing_variants"] = [str(x).strip() for x in bv if str(x).strip()][:8]
+
     for k in ("occasion_hi", "prefix_hi", "suffix_hi", "blessing_hi", "quote_hi",
               "caption_hi", "caption_en", "occasion_en", "person_name_en", "portrait_concept"):
         b[k] = str(b.get(k, "")).strip()
@@ -217,6 +234,12 @@ def build(ev: Dict) -> Dict:
                   "barsi", "smriti diwas"))
     is_jayanti = ("jayanti" in name_all or "birth anniversary" in name_all) and not _punya
 
+    # "की कृपा ... बनी रहे" takes पर, not को. The model reaches for the stock
+    # "आप सभी को" lead-in regardless of what follows, which prints as
+    # "आप सभी को साईं बाबा की कृपा बनी रहे" — wrong case marker.
+    if "कृपा" in b.get("suffix_hi", "") and b.get("prefix_hi", "").strip() == "आप सभी को":
+        b["prefix_hi"] = "आप सभी पर"
+
     # Safety net for the one-sentence rule. The model keeps the occasion word in
     # BOTH halves — "गांधी जयंती" + "की जयंती पर शत्-शत् नमन" prints as a stutter.
     # Any occasion word the suffix already carries is dropped from the name.
@@ -238,6 +261,13 @@ def build(ev: Dict) -> Dict:
     if len(occ_words) > 1 and suf_words and occ_words[-1] == suf_words[0]:
         b["occasion_hi"] = " ".join(occ_words[:-1])
     b["occasion_hi"] = b["occasion_hi"].strip()
+
+    # Force the deity name for a weekday devotional, and make sure the suffix
+    # still reads on from it.
+    if ev.get("deity_hi"):
+        b["occasion_hi"] = ev["deity_hi"]
+        if b["suffix_hi"] and not b["suffix_hi"].startswith("की"):
+            b["suffix_hi"] = "की " + b["suffix_hi"].lstrip("की ").strip()
 
     # occasion_hi is the hero of the template — without it there is no post
     if not b["occasion_hi"]:

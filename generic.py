@@ -16,27 +16,31 @@ from typing import Dict, List
 
 # Monday=0 … Sunday=6. The standard North-Indian weekday-deity mapping, which is
 # also what the calendar's own "Weekday Devotional" rows follow.
+# (weekday, deity in English, deity key, notes, DEITY NAME IN HINDI)
+# The Hindi name is supplied explicitly: asked to name the deity itself, the model
+# kept putting the WEEKDAY in the headline slot ("गुरुवार की कृपा बनी रहे"), which
+# is not what a devotional post says.
 WEEKDAY_DEITY = {
     0: ("Somwar", "Lord Shiva", "Shiv",
-        "Shiva worship day. Bel patra, milk abhishek, Om Namah Shivaya."),
+        "Shiva worship day. Bel patra, milk abhishek, Om Namah Shivaya.", "भगवान शिव"),
     1: ("Mangalwar", "Hanuman Ji", "Hanuman",
-        "Hanuman day. Sindoor, chola, Hanuman Chalisa, strength and protection."),
+        "Hanuman day. Sindoor, chola, Hanuman Chalisa, strength and protection.", "हनुमान जी"),
     2: ("Budhwar", "Lord Ganesha", "Ganesh",
-        "Ganesha day. Modak, durva grass, remover of obstacles, new beginnings."),
-    3: ("Guruwar", "Lord Vishnu / Sai Baba", "Vishnu",
-        "Vishnu and Guru day. Yellow offerings, gratitude to the guru."),
-    4: ("Shukrawar", "Mata Lakshmi / Durga", "Lakshmi",
-        "Devi day. Lakshmi for prosperity, Durga for shakti. White and red offerings."),
-    5: ("Shaniwar", "Shani Dev / Hanuman Ji", "Shani",
-        "Shani day. Til oil, black cloth, discipline, patience and justice."),
+        "Ganesha day. Modak, durva grass, remover of obstacles, new beginnings.", "श्री गणेश"),
+    3: ("Guruwar", "Sai Baba", "Vishnu",
+        "Sai Baba and Guru day. Yellow offerings, gratitude to the guru.", "साईं बाबा"),
+    4: ("Shukrawar", "Mata Lakshmi", "Lakshmi",
+        "Devi day. Lakshmi for prosperity, Durga for shakti. White and red offerings.", "माँ लक्ष्मी"),
+    5: ("Shaniwar", "Shani Dev", "Shani",
+        "Shani day. Til oil, black cloth, discipline, patience and justice.", "शनि देव"),
     6: ("Ravivar", "Surya Dev", "Surya",
-        "Sun day. Arghya at sunrise, health, vitality and clarity."),
+        "Sun day. Arghya at sunrise, health, vitality and clarity.", "सूर्य देव"),
 }
 
 
 def deity_event(date_iso: str) -> Dict:
     d = datetime.date.fromisoformat(date_iso)
-    day_hi, deity, key, note = WEEKDAY_DEITY[d.weekday()]
+    day_hi, deity, key, note, deity_hi = WEEKDAY_DEITY[d.weekday()]
     return {
         "date": date_iso,
         "event": f"{day_hi} — {deity}",
@@ -50,6 +54,7 @@ def deity_event(date_iso: str) -> Dict:
         "tone": "festive_devotional",
         "occasion": "weekday_devotional",
         "deity": key,
+        "deity_hi": deity_hi,
         "sensitivity": "standard",
         "warnings": [],
         "reach": 5,

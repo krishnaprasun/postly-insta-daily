@@ -89,6 +89,16 @@ def _header(canvas, th: Dict, centered: bool = False, scrim: bool = False) -> in
     return 50 + lg.height + 8 + 26
 
 
+def _footer_top(compact: bool = False) -> int:
+    """Where the footer starts, without drawing it.
+
+    Lets a layout lay its own panel down BEFORE the footer, so the panel does not
+    end up painted over the feature bar and dim it.
+    """
+    bar_y = PX - MARGIN - 62
+    return bar_y - 18 if compact else bar_y - 12 - 78 - 18
+
+
 def _footer(canvas, th: Dict, compact: bool = False) -> int:
     d = ImageDraw.Draw(canvas)
     bar_h, inner = 62, PX - MARGIN * 2
@@ -305,24 +315,36 @@ def _layout_scene_card(canvas, brief, th):
 
 
 def _layout_scene_wash(canvas, brief, th):
-    """Backdrop under a dark wash, type centred over it."""
-    wr, wg, wb = th.get("wash", (14, 10, 24))
-    wash = Image.new("RGBA", (PX, PX), (0, 0, 0, 0))
-    d = ImageDraw.Draw(wash, "RGBA")
-    for y in range(PX):
-        t = y / PX
-        d.line([(0, y), (PX, y)], fill=(wr, wg, wb, int(70 + 150 * (t ** 1.3))))
-    canvas.alpha_composite(wash)
+    """Backdrop with a frosted panel across the lower third, type inside it.
 
+    A full-image wash muddied the artwork and still left type sitting on top of
+    the subject. A defined panel keeps the picture clean above and gives the
+    words their own ground, which is what the type needs to be readable.
+    """
+    wr, wg, wb = th.get("wash", (14, 10, 24))
     top = _header(canvas, th, centered=True, scrim=True)
-    bottom = _footer(canvas, th, compact=True)
-    blk = _fit_block(brief, th, PX - MARGIN * 2 - 60, int((bottom - top) * 0.62), center=True)
+    bottom = _footer_top(compact=True)          # footer is drawn last, on top
+
+    blk = _fit_block(brief, th, PX - MARGIN * 2 - 70, int(PX * 0.40), center=True)
     if blk is None:
         return False
-    # sits low: the model was told to keep the BOTTOM half calm, so that is where
-    # type belongs — centring it puts the headline over the subject's face.
-    canvas.alpha_composite(blk, ((PX - blk.width) // 2,
-                                 bottom - blk.height - int(PX * 0.03)))
+
+    pad = int(PX * 0.045)
+    panel_h = blk.height + pad * 2
+    panel_y = bottom - panel_h - int(PX * 0.015)
+    fade = int(PX * 0.10)
+
+    layer = Image.new("RGBA", (PX, PX), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer, "RGBA")
+    for y in range(max(0, panel_y - fade), PX):
+        if y < panel_y:                       # soft top edge into the artwork
+            a = int(212 * ((y - (panel_y - fade)) / fade) ** 1.5)
+        else:
+            a = 212
+        d.line([(0, y), (PX, y)], fill=(wr, wg, wb, a))
+    canvas.alpha_composite(layer)
+    canvas.alpha_composite(blk, ((PX - blk.width) // 2, panel_y + pad))
+    _footer(canvas, th, compact=True)           # drawn over the panel, stays crisp
     return True
 
 
@@ -333,6 +355,12 @@ def layout_name(i: int) -> str:
 
 def compose(art_bytes: bytes, brief: Dict, variant: int = 0) -> Tuple[bytes, Dict]:
     v = prompts.variant(variant)
+    # Each design carries a different closing line; five identical write-ups made
+    # the five options look like one post rendered five times.
+    bv = brief.get("blessing_variants") or []
+    if bv:
+        brief = dict(brief)
+        brief["blessing_hi"] = bv[variant % len(bv)]
     th = themes.theme(v["theme"])
     tribute = _is_muted(brief)
     if tribute:

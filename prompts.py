@@ -18,6 +18,14 @@ _NO_TEXT = """ABSOLUTE RULE — NO TEXT OF ANY KIND. No letters, words, numbers,
 logos, watermarks or signatures in any script. Not even decorative or blurred lettering. Artwork
 containing text is rejected and regenerated."""
 
+_ISLAMIC = """ISLAMIC OCCASIONS (Eid, Milad-un-Nabi, Muharram, Ramzan): never depict the Prophet
+or any human religious figure. Do NOT render Arabic calligraphy either — it is text, it comes out
+malformed, and it trips the no-text rule. Build the image from ARCHITECTURE AND OBJECTS instead:
+a mosque dome and minarets against dusk, a lit crescent moon and star, hanging metal lanterns
+(fanoos), an ornate carved arch or jali screen, geometric girih tilework, dates, roses, a prayer
+mat, strings of lights. Deep emerald green, teal, ivory and gold. Serene and reverent, festive
+without frivolity."""
+
 _CULTURE = """CULTURAL ACCURACY: depict deities, rituals, attire, instruments, flowers and motifs
 correctly and respectfully for the specific occasion. Never mix iconography across religions.
 Never place a deity in a casual, demeaning or commercial pose.
@@ -65,7 +73,9 @@ comfortable margin of white around it. Rich detail, premium finish, believable l
 
 {people}
 
-{culture}"""
+{culture}
+
+{islamic}"""
 
 SCENE_SYSTEM = """You are producing a full BACKDROP image for an Indian brand's Instagram post.
 Square 1:1. The brand lays its logo and Hindi headline over this image afterwards.
@@ -82,7 +92,9 @@ devotional setting, delicate particles or bokeh. Premium editorial finish, never
 
 {people}
 
-{culture}"""
+{culture}
+
+{islamic}"""
 
 
 VARIANTS = [
@@ -118,9 +130,11 @@ def system_for(v: dict, allow_likeness: bool = False) -> str:
     people = _PEOPLE_ALLOWED if allow_likeness else _PEOPLE_SYMBOLIC
     if v["mode"] == "scene":
         return SCENE_SYSTEM.format(no_text=_NO_TEXT, people=people, culture=_CULTURE,
+                                   islamic=_ISLAMIC,
                                    zone=v.get("zone", "LEFT HALF"),
                                    opposite=v.get("opposite", "right half"))
-    return SUBJECT_SYSTEM.format(no_text=_NO_TEXT, people=people, culture=_CULTURE)
+    return SUBJECT_SYSTEM.format(no_text=_NO_TEXT, people=people, culture=_CULTURE,
+                                 islamic=_ISLAMIC)
 
 
 def build_prompt(brief: dict, v: dict) -> str:
