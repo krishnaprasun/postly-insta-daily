@@ -1,0 +1,145 @@
+"""
+Turn a verified calendar occasion into a creative brief + Instagram captions.
+
+One LLM call produces everything the rest of the run needs: the Hindi headline
+that gets overlaid on the artwork, the visual direction for the image model, and
+both the Hindi and English captions with hashtags.
+
+Tone correctness is the point of this module. The calendar already tells us
+whether the occasion is a festival, a jayanti or a punyatithi; the prompt turns
+that into the right words, so a remembrance never reads "Happy".
+"""
+from __future__ import annotations
+
+import json
+import re
+from typing import Dict
+
+import config
+import llm
+
+BRIEF_SYS = """You are a creative director for an Indian consumer brand's Instagram handle.
+You write Hindi that is natural, correctly spelled and idiomatic — never machine-literal.
+Answer with RAW JSON only: no markdown fences, no commentary."""
+
+TONE_RULES = """TONE RULES (these are not negotiable):
+- Festival / religious occasion -> warm, celebratory, devotional as appropriate to that faith.
+- National day -> dignified and patriotic, not jingoistic.
+- Jayanti (birth anniversary of someone DECEASED) -> remembrance and respect
+  ("जयंती पर शत्-शत् नमन"). NEVER "Happy Birthday", NEVER "जन्मदिन मुबारक".
+- Punyatithi / Shraddhanjali (death anniversary) -> somber tribute
+  ("विनम्र श्रद्धांजलि"). NEVER any celebratory word, NEVER "शुभकामनाएं".
+- Observance / awareness day -> light, useful, human.
+Never use the word "Happy" or "शुभकामनाएं" for a tribute or remembrance occasion."""
+
+
+def _prompt(ev: Dict) -> str:
+    warn = ""
+    if ev.get("warnings"):
+        warn = "\nCALENDAR WARNINGS: " + " | ".join(ev["warnings"])
+    return f"""Build the creative brief for ONE Instagram post.
+
+OCCASION: {ev.get('event', '')}
+DATE: {ev.get('date', '')}
+TYPE: {ev.get('type', '')}   CATEGORY: {ev.get('category', '')}
+CURATED TONE: {ev.get('tone', '')}   OCCASION KIND: {ev.get('occasion', '')}
+AUDIENCE: {ev.get('audience', '')}
+EDITORIAL HOOK (from the calendar): {ev.get('hook', '')}
+BACKGROUND NOTES: {ev.get('notes', '')[:400]}
+DEITY (if any): {ev.get('deity', '')}{warn}
+
+{TONE_RULES}
+
+The brand is a mainstream Indian consumer app. The post must feel like it belongs to a brand, not
+a forwarded greeting image. The artwork will carry NO text — a designer overlays the headline
+afterwards, so the headline must be SHORT.
+
+Return RAW JSON with exactly these keys:
+{{
+  "occasion_en": "<occasion name in English>",
+  "headline_hi": "<the ONE line overlaid on the image, HINDI/Devanagari, MAX 6 words. This is the
+                   hero text — make it land.>",
+  "subline_hi": "<optional smaller second line in Hindi, MAX 8 words, or empty string>",
+  "context": "<one line: what this occasion actually marks>",
+  "mood": "<3-6 adjectives for the artwork's emotional register>",
+  "visual_concept": "<2-3 sentences describing the image: subject, setting, action, focal point.
+                      Concrete and visual. No text in the image.>",
+  "motifs": "<comma-separated concrete objects/symbols to include>",
+  "palette": "<the colour direction in a short phrase>",
+  "avoid": "<what must not appear — wrong iconography, clichés, anything disrespectful>",
+  "caption_hi": "<Instagram caption in HINDI, 2-4 short lines, warm and human, may use 1-3 emoji.
+                  No hashtags here.>",
+  "caption_en": "<the English caption, 2-4 short lines. Not a literal translation — write it
+                  natively for an English-reading Indian audience. May use 1-3 emoji. No hashtags.>",
+  "hashtags": ["<8-12 relevant hashtags, mixed Hindi-transliterated and English, no # symbol>"],
+  "tone": "<echo the tone you wrote for: festive|devotional|patriotic|remembrance|tribute|awareness|love>",
+  "needs_human_check": <true if anything about this occasion is uncertain or sensitive, else false>,
+  "check_reason": "<why, if needs_human_check is true, else empty string>"
+}}"""
+
+
+def _fallback(ev: Dict) -> Dict:
+    """Deterministic brief so a failed LLM call never blocks the day's run."""
+    name = ev.get("event", "आज का दिन")
+    tribute = ev.get("tone") == "tribute_somber" or "punyatithi" in name.lower()
+    return {
+        "occasion_en": name,
+        "headline_hi": "विनम्र श्रद्धांजलि" if tribute else "हार्दिक शुभकामनाएं",
+        "subline_hi": "",
+        "context": ev.get("notes", "")[:160],
+        "mood": "restrained, respectful" if tribute else "warm, festive",
+        "visual_concept": f"A respectful symbolic composition for {name}.",
+        "motifs": "diya, marigold" if not tribute else "white flowers, single lamp",
+        "palette": "muted greys and white" if tribute else "saffron and gold",
+        "avoid": "text, celebration" if tribute else "text",
+        "caption_hi": name,
+        "caption_en": name,
+        "hashtags": ["india", "festival"] if not tribute else ["shraddhanjali"],
+        "tone": "tribute" if tribute else "festive",
+        "needs_human_check": True,
+        "check_reason": "Brief was generated by the offline fallback, not the model — review copy.",
+        "_fallback": True,
+    }
+
+
+def build(ev: Dict) -> Dict:
+    """Creative brief + captions for a calendar occasion. Never raises."""
+    if not getattr(llm, "ENABLED", False):
+        return _fallback(ev)
+    try:
+        raw = llm.text(_prompt(ev), system=BRIEF_SYS, timeout=90)
+        m = re.search(r"\{.*\}", raw, re.S)
+        if not m:
+            return _fallback(ev)
+        b = json.loads(m.group(0))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[brief] failed, using fallback: {exc}", flush=True)
+        return _fallback(ev)
+
+    tags = b.get("hashtags") or []
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.replace("#", "").split() if t.strip()]
+    b["hashtags"] = [str(t).lstrip("#").strip()[:40] for t in tags if str(t).strip()][:12]
+
+    for k in ("headline_hi", "subline_hi", "caption_hi", "caption_en", "occasion_en"):
+        b[k] = str(b.get(k, "")).strip()
+    b["needs_human_check"] = bool(b.get("needs_human_check")) or bool(ev.get("warnings"))
+    if ev.get("warnings") and not b.get("check_reason"):
+        b["check_reason"] = " | ".join(ev["warnings"])
+
+    if not b["headline_hi"]:
+        b["headline_hi"] = _fallback(ev)["headline_hi"]
+    return b
+
+
+def caption_text(brief: Dict, lang: str = "hi") -> str:
+    """Final caption as it would be posted: body + hashtag block."""
+    body = brief.get("caption_hi" if lang == "hi" else "caption_en", "")
+    tags = " ".join("#" + t.replace(" ", "") for t in brief.get("hashtags", []))
+    handle = config.BRAND_HANDLE
+    parts = [body.strip()]
+    if tags:
+        parts.append(tags)
+    if handle:
+        parts.append(handle)
+    return "\n\n".join(p for p in parts if p)

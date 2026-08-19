@@ -1,0 +1,261 @@
+"""
+Review + approval web app.
+
+Two ways in:
+  * /r/<token>  — the daily review link. No login, so it opens straight from the
+    phone. The token is per-run and unguessable.
+  * /           — the admin index (basic auth), for history and manual runs.
+
+Approving a variant never posts anything. Posting is a separate button, and it
+refuses to run until Instagram credentials are actually configured.
+"""
+from __future__ import annotations
+
+import datetime
+import functools
+import json
+import threading
+import time
+from typing import Optional
+
+from flask import (Flask, Response, abort, jsonify, redirect, render_template,
+                   request, send_file, url_for)
+
+import brief as brief_mod
+import config
+import daily
+import db
+import events
+import gen
+import imaging
+import publisher
+
+app = Flask(__name__)
+app.secret_key = config.SECRET_KEY
+db.init()
+
+
+# ── auth ────────────────────────────────────────────────────────────────────
+def require_admin(fn):
+    @functools.wraps(fn)
+    def wrapper(*a, **kw):
+        if not config.ADMIN_PASS:                     # unset = local dev, open
+            return fn(*a, **kw)
+        auth = request.authorization
+        if not auth or auth.username != config.ADMIN_USER or auth.password != config.ADMIN_PASS:
+            return Response("Authentication required", 401,
+                            {"WWW-Authenticate": 'Basic realm="postly-insta"'})
+        return fn(*a, **kw)
+    return wrapper
+
+
+def _run_or_404(run_id: int):
+    r = db.get_run(run_id)
+    if not r:
+        abort(404)
+    return r
+
+
+def _view(run):
+    """Everything a review page needs for one run."""
+    b = json.loads(run["brief_json"] or "{}")
+    ev = json.loads(run["occasion_json"] or "{}")
+    return {
+        "run": run,
+        "brief": b,
+        "occasion": ev,
+        "variants": db.variants(run["id"]),
+        "caption_hi": brief_mod.caption_text(b, "hi") if b else "",
+        "caption_en": brief_mod.caption_text(b, "en") if b else "",
+        "publishes": db.publishes(run["id"]),
+        "ig": publisher.preflight(),
+    }
+
+
+# ── pages ───────────────────────────────────────────────────────────────────
+@app.route("/")
+@require_admin
+def index():
+    runs = db.recent_runs(60)
+    rows = []
+    for r in runs:
+        vs = db.variants(r["id"])
+        rows.append({"run": r, "n_ok": sum(1 for v in vs if v["filename"]),
+                     "n": len(vs),
+                     "approved": next((v for v in vs if v["status"] == "approved"), None)})
+    return render_template("index.html", rows=rows, ig=publisher.preflight(),
+                           today=daily.today_ist(), cfg=config)
+
+
+@app.route("/r/<token>")
+def review(token):
+    run = db.run_by_token(token)
+    if not run:
+        abort(404)
+    return render_template("review.html", **_view(run), token=token)
+
+
+@app.route("/run/<int:run_id>")
+@require_admin
+def run_page(run_id):
+    run = _run_or_404(run_id)
+    return redirect(url_for("review", token=run["review_token"]))
+
+
+@app.route("/img/<int:variant_id>")
+def img(variant_id):
+    v = db.get_variant(variant_id)
+    if not v or not v["filename"]:
+        abort(404)
+    p = config.IMAGE_DIR / v["filename"]
+    if not p.exists():
+        abort(404)
+    return send_file(str(p), mimetype="image/jpeg",
+                     download_name=f"postly_{v['run_id']}_{v['idx']}.jpg",
+                     as_attachment=request.args.get("dl") == "1")
+
+
+# ── actions ─────────────────────────────────────────────────────────────────
+@app.route("/v/<int:variant_id>/<action>", methods=["POST"])
+def variant_action(variant_id, action):
+    v = db.get_variant(variant_id)
+    if not v:
+        abort(404)
+    run = db.get_run(v["run_id"])
+    if request.form.get("token") != run["review_token"]:
+        abort(403)
+
+    if action == "approve":
+        db.approve_only(v["run_id"], variant_id)
+        db.set_run(v["run_id"], status="approved")
+    elif action == "reject":
+        db.set_variant_status(variant_id, "rejected", request.form.get("feedback", ""))
+    else:
+        abort(400)
+    return redirect(url_for("review", token=run["review_token"]))
+
+
+@app.route("/run/<int:run_id>/skip", methods=["POST"])
+def skip_run(run_id):
+    run = _run_or_404(run_id)
+    if request.form.get("token") != run["review_token"]:
+        abort(403)
+    db.set_run(run_id, status="skipped")
+    return redirect(url_for("review", token=run["review_token"]))
+
+
+@app.route("/run/<int:run_id>/post", methods=["POST"])
+def post_run(run_id):
+    """Publish the approved variant to Instagram.
+
+    Refuses unless a variant is approved AND Instagram is configured. When it is
+    not configured the run is marked 'manual' so the history stays honest about
+    how the post actually went out.
+    """
+    run = _run_or_404(run_id)
+    if request.form.get("token") != run["review_token"]:
+        abort(403)
+
+    approved = next((v for v in db.variants(run_id) if v["status"] == "approved"), None)
+    if not approved:
+        return redirect(url_for("review", token=run["review_token"], err="approve-first"))
+
+    lang = "en" if request.form.get("lang") == "en" else "hi"
+    b = json.loads(run["brief_json"] or "{}")
+    caption = brief_mod.caption_text(b, lang)
+
+    pre = publisher.preflight()
+    if not pre["ready"]:
+        db.add_publish(run_id, approved["id"], lang, caption, status="manual",
+                       error="; ".join(pre["missing"]))
+        return redirect(url_for("review", token=run["review_token"], err="ig-not-ready"))
+
+    try:
+        img_bytes = (config.IMAGE_DIR / approved["filename"]).read_bytes()
+        res = publisher.post_image(img_bytes, caption,
+                                   filename=f"postly_{run_id}_{approved['idx']}.jpg")
+        db.add_publish(run_id, approved["id"], lang, caption, status="posted",
+                       ig_media_id=res.get("media_id", ""), permalink=res.get("permalink", ""))
+        db.set_run(run_id, status="posted")
+    except Exception as exc:  # noqa: BLE001
+        db.add_publish(run_id, approved["id"], lang, caption, status="failed",
+                       error=str(exc)[:400])
+    return redirect(url_for("review", token=run["review_token"]))
+
+
+@app.route("/generate", methods=["POST"])
+@require_admin
+def generate():
+    date_iso = (request.form.get("date") or daily.target_date()).strip()
+    force = request.form.get("force") == "1"
+    res = daily.run_for(date_iso, force=force, notify_user=False)
+    if res.get("run_id"):
+        run = db.get_run(res["run_id"])
+        if run:
+            return redirect(url_for("review", token=run["review_token"]))
+    return jsonify(res)
+
+
+@app.route("/preview")
+@require_admin
+def preview():
+    """What would today's run pick and say, without generating any images."""
+    d = request.args.get("d", daily.target_date())
+    sel = events.pick(d)
+    out = {"date": d, "selection": sel}
+    if sel.get("chosen"):
+        out["brief"] = brief_mod.build(sel["chosen"])
+    return Response(json.dumps(out, ensure_ascii=False, indent=2),
+                    mimetype="application/json; charset=utf-8")
+
+
+@app.route("/healthz")
+def healthz():
+    lo, hi = events.coverage()
+    return jsonify({
+        "ok": True,
+        "today_ist": daily.today_ist(),
+        "calendar_coverage": [lo, hi],
+        "calendar_covers_today": bool(lo and hi and lo <= daily.today_ist() <= hi),
+        "devanagari_shaping": imaging.shaping_available(),
+        "instagram": publisher.preflight(),
+        "scheduler": config.SCHEDULER_ENABLED,
+        "run_at_ist": f"{config.RUN_HOUR_IST:02d}:{config.RUN_MINUTE_IST:02d}",
+    })
+
+
+# ── daily scheduler ─────────────────────────────────────────────────────────
+def _next_run_utc() -> datetime.datetime:
+    now = datetime.datetime.now(daily.IST)
+    nxt = now.replace(hour=config.RUN_HOUR_IST, minute=config.RUN_MINUTE_IST,
+                      second=0, microsecond=0)
+    if nxt <= now:
+        nxt += datetime.timedelta(days=1)
+    return nxt.astimezone(datetime.timezone.utc)
+
+
+def _scheduler():
+    while True:
+        try:
+            nxt = _next_run_utc()
+            wait = (nxt - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+            print(f"[sched] next run at {nxt.isoformat()} (in {int(wait)}s)", flush=True)
+            time.sleep(max(60, wait))
+            res = daily.run_for()
+            print(f"[sched] {json.dumps(res, ensure_ascii=False)}", flush=True)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[sched] error: {exc}", flush=True)
+            time.sleep(600)
+
+
+if not imaging.shaping_available():
+    print("[startup] WARNING: Devanagari shaping is NOT available — headlines cannot be "
+          "drawn and every variant will fail. Install fonts-noto-devanagari + libraqm "
+          "(Linux) or pyobjc-framework-Cocoa (macOS). See README.", flush=True)
+
+if config.SCHEDULER_ENABLED:
+    threading.Thread(target=_scheduler, daemon=True).start()
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000, debug=False)

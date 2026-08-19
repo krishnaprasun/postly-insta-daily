@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Postly Daily — runs{% endblock %}
+{% block body %}
+<header><h1>Daily Instagram posts</h1>
+  <span class="sub">generates {{ '%02d:%02d'|format(cfg.RUN_HOUR_IST, cfg.RUN_MINUTE_IST) }} IST ·
+  {{ cfg.VARIANT_COUNT }} variants</span></header>
+
+{% if not ig.ready %}
+<div class="banner b-warn"><b>Instagram auto-posting is off.</b> {{ ig.missing | join('; ') }}.
+  Approved posts are downloaded and posted by hand until this is set up.</div>
+{% else %}
+<div class="banner b-ok">Auto-posting is live on <b>@{{ ig.account }}</b>.</div>
+{% endif %}
+
+<div class="card">
+  <form method="post" action="{{ url_for('generate') }}" class="row">
+    <input type="date" name="date" value="{{ today }}">
+    <label class="sub"><input type="checkbox" name="force" value="1"> regenerate</label>
+    <button class="btn pri">Generate now</button>
+    <a class="btn gh sm" href="{{ url_for('preview') }}">Preview today's pick</a>
+    <a class="btn gh sm" href="{{ url_for('healthz') }}">Health</a>
+  </form>
+</div>
+
+<div class="card">
+  <table>
+    <tr><th>Date</th><th>Occasion</th><th>Variants</th><th>Status</th><th></th></tr>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.run['date_iso'] }}</td>
+      <td>{{ r.run['occasion'] or '—' }}
+        {% if r.run['needs_check'] %}<span class="tag warn">check</span>{% endif %}</td>
+      <td>{{ r.n_ok }}/{{ r.n }}</td>
+      <td>{% if r.run['status']=='posted' %}<span class="tag ok">posted</span>
+          {% elif r.run['status']=='failed' %}<span class="tag">failed</span>
+          {% else %}<span class="tag">{{ r.run['status'] }}</span>{% endif %}</td>
+      <td><a href="{{ url_for('review', token=r.run['review_token']) }}">review →</a></td>
+    </tr>
+    {% endfor %}
+    {% if not rows %}<tr><td colspan="5" class="muted">No runs yet.</td></tr>{% endif %}
+  </table>
+</div>
+{% endblock %}

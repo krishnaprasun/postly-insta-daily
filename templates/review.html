@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}{{ run['occasion'] }} — {{ run['date_iso'] }}{% endblock %}
+{% block body %}
+{% set approved = variants | selectattr('status','equalto','approved') | list | first %}
+
+<header>
+  <h1>{{ run['occasion'] or 'No occasion' }}</h1>
+  <span class="sub">{{ run['date_iso'] }} · {{ occasion.get('type','') }}
+    {%- if occasion.get('priority') %} · {{ occasion['priority'] }}{% endif %}</span>
+</header>
+<div class="sub" style="margin-bottom:4px">{{ brief.get('context','') }}</div>
+
+{% if request.args.get('err') == 'approve-first' %}
+  <div class="banner b-bad">Pick a variant first — nothing is approved yet.</div>
+{% elif request.args.get('err') == 'ig-not-ready' %}
+  <div class="banner b-warn">Instagram auto-posting isn't configured yet, so nothing was posted.
+    Use <b>Download</b> and the caption below to post manually. Logged as a manual post.</div>
+{% endif %}
+
+{% if run['needs_check'] %}
+  <div class="banner b-warn"><b>Check before posting.</b> {{ run['check_reason'] }}</div>
+{% endif %}
+{% if occasion.get('warnings') %}
+  {% for w in occasion['warnings'] %}<div class="banner b-warn">{{ w }}</div>{% endfor %}
+{% endif %}
+{% if run['status'] == 'posted' %}
+  <div class="banner b-ok">Posted to Instagram.
+    {% for p in publishes %}{% if p['permalink'] %}<a href="{{ p['permalink'] }}">View post</a>{% endif %}{% endfor %}
+  </div>
+{% elif run['status'] == 'skipped' %}
+  <div class="banner b-bad">This day was skipped — nothing will be posted.</div>
+{% endif %}
+
+<div class="card">
+  <h2>Pick one</h2>
+  <div class="grid">
+    {% for v in variants %}
+      <div class="v {{ v['status'] }}">
+        {% if v['filename'] %}
+          <a href="{{ url_for('img', variant_id=v['id']) }}" target="_blank">
+            <img src="{{ url_for('img', variant_id=v['id']) }}" alt="{{ v['style'] }}" loading="lazy">
+          </a>
+        {% else %}
+          <div style="aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;
+                      padding:14px;color:var(--mut);font-size:12px;text-align:center">
+            Failed<br><span style="font-size:11px">{{ v['error'][:120] }}</span></div>
+        {% endif %}
+        <div class="meta">
+          <span>{{ v['style'] }}</span>
+          {% if v['status'] == 'approved' %}<span class="tag ok">approved</span>
+          {% elif v['status'] == 'rejected' %}<span class="tag">rejected</span>
+          {% elif v['text_qa'] == 'True' %}<span class="tag warn">text?</span>{% endif %}
+        </div>
+        {% if v['filename'] %}
+        <div class="acts">
+          <form method="post" action="{{ url_for('variant_action', variant_id=v['id'], action='approve') }}" style="flex:1">
+            <input type="hidden" name="token" value="{{ token }}">
+            <button class="btn ok sm" style="width:100%"
+              {% if v['status']=='approved' %}disabled{% endif %}>Approve</button>
+          </form>
+          <a class="btn gh sm" href="{{ url_for('img', variant_id=v['id']) }}?dl=1">Download</a>
+        </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Caption</h2>
+  <div class="row" style="align-items:flex-start;gap:14px">
+    <div style="flex:1;min-width:260px">
+      <div class="sub" style="margin-bottom:6px">Hindi</div>
+      <div class="cap" id="cap-hi">{{ caption_hi }}</div>
+      <button class="btn sm gh" style="margin-top:8px" onclick="copyCap('cap-hi',this)">Copy Hindi</button>
+    </div>
+    <div style="flex:1;min-width:260px">
+      <div class="sub" style="margin-bottom:6px">English</div>
+      <div class="cap" id="cap-en">{{ caption_en }}</div>
+      <button class="btn sm gh" style="margin-top:8px" onclick="copyCap('cap-en',this)">Copy English</button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Post it</h2>
+  {% if not ig.ready %}
+    <div class="banner b-warn" style="margin-top:0">
+      <b>Auto-posting is off.</b> Missing: {{ ig.missing | join('; ') }}.<br>
+      Download the approved image and post from the phone — the caption is above.
+    </div>
+  {% else %}
+    <div class="sub" style="margin-bottom:10px">Posting to <b>@{{ ig.account }}</b>.</div>
+  {% endif %}
+  <form method="post" action="{{ url_for('post_run', run_id=run['id']) }}" class="row"
+        onsubmit="return confirm('Post the approved image to Instagram now? This is public and immediate.')">
+    <input type="hidden" name="token" value="{{ token }}">
+    <label class="sub">Caption
+      <select name="lang" class="btn sm" style="margin-left:6px">
+        <option value="hi">Hindi</option><option value="en">English</option>
+      </select>
+    </label>
+    <button class="btn pri" {% if not approved or run['status']=='posted' %}disabled{% endif %}>
+      {% if ig.ready %}Post to Instagram{% else %}Mark as posted manually{% endif %}
+    </button>
+    {% if not approved %}<span class="sub">Approve a variant to enable this.</span>{% endif %}
+  </form>
+  {% if publishes %}
+    <table style="margin-top:14px">
+      <tr><th>When</th><th>Lang</th><th>Status</th><th>Link / error</th></tr>
+      {% for p in publishes %}
+      <tr><td>{{ p['created_at'] | int }}</td><td>{{ p['lang'] }}</td><td>{{ p['status'] }}</td>
+          <td>{% if p['permalink'] %}<a href="{{ p['permalink'] }}">open</a>
+              {% else %}<span class="muted">{{ p['error'][:120] }}</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Details</h2>
+  <div class="kv">
+    <div>Headline</div><div>{{ brief.get('headline_hi','') }}</div>
+    <div>Subline</div><div>{{ brief.get('subline_hi','') or '—' }}</div>
+    <div>Tone</div><div>{{ brief.get('tone','') }}</div>
+    <div>Why this day</div><div>{{ occasion.get('why','—') }}</div>
+    <div>Reach score</div><div>{{ occasion.get('reach','—') }}/10</div>
+    <div>Calendar row</div><div class="muted">{{ occasion.get('category','') }}
+      {%- if occasion.get('tier') %} · {{ occasion['tier'] }}{% endif %}</div>
+  </div>
+  <form method="post" action="{{ url_for('skip_run', run_id=run['id']) }}" style="margin-top:14px">
+    <input type="hidden" name="token" value="{{ token }}">
+    <button class="btn gh sm">Skip today</button>
+  </form>
+</div>
+
+<script>
+function copyCap(id, btn){
+  navigator.clipboard.writeText(document.getElementById(id).innerText).then(function(){
+    var t = btn.textContent; btn.textContent = 'Copied'; setTimeout(function(){btn.textContent=t}, 1400);
+  });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,59 @@
+services:
+  - type: web
+    name: postly-insta-daily
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
+    disk:
+      name: data
+      mountPath: /data      # SQLite + generated JPEGs; must persist across deploys
+      sizeGB: 5
+    envVars:
+      # Generation
+      - key: LITELLM_BASE_URL
+        sync: false
+      - key: LITELLM_API_KEY
+        sync: false
+      - key: LITELLM_MODEL
+        sync: false
+      - key: LITELLM_TEXT_MODEL
+        value: gemini-2.5-flash-lite
+      # Review UI
+      - key: PUBLIC_BASE_URL
+        sync: false          # https://<service>.onrender.com — used in the review link
+      - key: ADMIN_USER
+        value: postly
+      - key: ADMIN_PASS
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      # Daily run
+      - key: SCHEDULER_ENABLED
+        value: "true"
+      - key: RUN_HOUR_IST
+        value: "7"
+      - key: VARIANT_COUNT
+        value: "4"
+      # Notification (optional)
+      - key: NOTIFY_CHANNEL
+        value: none
+      - key: NOTIFY_TO
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      # Public image hosting (needed before Instagram publishing can work)
+      - key: POSTLY_CDN_URL
+        sync: false
+      - key: POSTLY_CDN_ACCESS_TOKEN
+        sync: false
+      # Instagram — leave off until the account has API access
+      - key: IG_PUBLISH_ENABLED
+        value: "false"
+      - key: IG_USER_ID
+        sync: false
+      - key: IG_ACCESS_TOKEN
+        sync: false
