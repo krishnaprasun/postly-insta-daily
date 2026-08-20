@@ -67,11 +67,16 @@ def _alt_list(cands, chosen=None) -> list:
 
 
 def redesign(run_id: int, n: Optional[int] = None) -> dict:
-    """Rebuild the same occasion on a DIFFERENT set of designs.
+    """Rebuild the same occasion: different designs AND freshly written copy.
 
     The variant index selects both the canvas and the art direction, so walking
     the offset forward through the pool gives genuinely different designs rather
     than re-rolls of the same five.
+
+    The brief is rewritten rather than reused. Reusing it meant a redesign kept
+    whatever wording the run was created with — so after any copy fix the button
+    quietly served the old, broken text on new artwork. A hand-written caption is
+    left alone; only the generated copy is refreshed.
     """
     import prompts
     db.init()
@@ -92,7 +97,18 @@ def redesign(run_id: int, n: Optional[int] = None) -> dict:
         except Exception:  # noqa: BLE001
             pass
 
-    b = json.loads(run["brief_json"] or "{}")
+    try:
+        occasion = json.loads(run["occasion_json"] or "{}")
+    except Exception:  # noqa: BLE001
+        occasion = {}
+    if occasion.get("event"):
+        b = brief_mod.build(occasion)
+        db.set_run(run_id, brief_json=json.dumps(b, ensure_ascii=False),
+                   needs_check=1 if b.get("needs_human_check") else 0,
+                   check_reason=b.get("check_reason", ""))
+    else:
+        b = json.loads(run["brief_json"] or "{}")   # nothing to rebuild from
+
     ok = sum(1 for r in gen.build_variants(
         b, indices=idx, on_result=lambda rr: _save_variant(run_id, rr)) if r.get("ok"))
     db.set_run(run_id, status="failed" if ok == 0 else "pending",
