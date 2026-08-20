@@ -246,6 +246,27 @@ def _ground_shadow(canvas, x: int, y: int, w: int, dark: bool):
     canvas.alpha_composite(sh, (x - pad, y - 78))
 
 
+def _halo(canvas, x: int, y: int, w: int, h: int, dark: bool, strength: int = 168):
+    """A soft field behind the text so artwork can pass BEHIND it and stay legible.
+
+    Integration means the picture is allowed into the words' half of the frame.
+    Without something under the type it becomes unreadable the moment the art
+    drifts behind it; a feathered field keeps the words solid while letting the
+    artwork show around them.
+    """
+    # Generous padding and a heavy blur: a tighter field leaves a visible edge
+    # running down the frame where the tint stops.
+    pad = int(max(w, h) * 0.40)
+    layer = Image.new("L", (w + pad * 2, h + pad * 2), 0)
+    ImageDraw.Draw(layer).ellipse([pad * 0.55, pad * 0.55,
+                                   w + pad * 1.45, h + pad * 1.45], fill=strength)
+    layer = layer.filter(ImageFilter.GaussianBlur(pad * 0.62))
+    tint = (10, 8, 16) if dark else (255, 253, 246)
+    field = Image.new("RGBA", layer.size, (*tint, 0))
+    field.putalpha(layer)
+    canvas.alpha_composite(field, (x - pad, y - pad))
+
+
 # ── subject layouts (cutout floated on a painted canvas) ────────────────────
 def _layout_hero(canvas, art, brief, th, mirror=False):
     trimmed = bk.trim(art)
@@ -256,11 +277,15 @@ def _layout_hero(canvas, art, brief, th, mirror=False):
 
     # Art runs from just under the header to the footer and bleeds off the side,
     # so the frame reads full instead of leaving a third of it empty.
-    art_h = int((bottom - top) * 1.02)
-    a = bk.scale_to(trimmed, int(PX * 0.56), art_h)
-    ax = (PX - MARGIN + 26 - a.width) if not mirror else (MARGIN - 26)
-    ay = bottom - a.height + 6
-    _ground_shadow(canvas, ax + int(a.width * 0.12), bottom + 4, int(a.width * 0.76), th["dark"])
+    # The artwork is deliberately oversized and pushed INTO the text column, so
+    # the two halves interlock instead of sitting side by side. The halo below
+    # keeps the words readable where the picture passes behind them.
+    art_h = int((bottom - top) * 1.10)
+    a = bk.scale_to(trimmed, int(PX * 0.66), art_h)
+    overlap = int(a.width * 0.16)
+    ax = (PX - MARGIN + 30 - a.width + overlap) if not mirror else (MARGIN - 30 - overlap)
+    ay = bottom - a.height + 8
+    _ground_shadow(canvas, ax + int(a.width * 0.14), bottom + 4, int(a.width * 0.72), th["dark"])
     canvas.alpha_composite(a, (ax, ay))
 
     # Column width must come from where the art ACTUALLY landed. Deriving it from
@@ -274,8 +299,44 @@ def _layout_hero(canvas, art, brief, th, mirror=False):
     blk = _fit_block(brief, th, col_w, bottom - top - 20, center=True)
     if blk is None:
         return False
-    canvas.alpha_composite(blk, (bx, top + max(0, int((bottom - top - blk.height) * 0.42))))
+    by = top + max(0, int((bottom - top - blk.height) * 0.42))
+    _halo(canvas, bx, by, blk.width, blk.height, th["dark"])
+    canvas.alpha_composite(blk, (bx, by))
+
+    # Foliage drawn in FRONT of both halves, crossing the seam where the artwork
+    # meets the words. Small procedural sprigs were tried first and read as blobs
+    # at this scale; large soft leaves overlapping both layers is what actually
+    # makes the two halves look like one drawing.
+    if not _is_muted(brief):
+        # Skipped on a punyatithi: fresh green foliage across a remembrance post
+        # is the wrong register entirely.
+        _foreground_foliage(canvas, bx + col_w, by, th, mirror)
     return True
+
+
+def _foreground_foliage(canvas, seam_x: int, y: int, th: Dict, mirror: bool):
+    import math
+    import random
+    leaf_col = (58, 122, 68) if not th["dark"] else (150, 196, 150)
+    layer = Image.new("RGBA", (PX, PX), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer, "RGBA")
+    rnd = random.Random(11)
+    for _ in range(9):
+        ox = seam_x + rnd.uniform(-PX * 0.10, PX * 0.06) * (-1 if mirror else 1)
+        oy = y + rnd.uniform(-PX * 0.10, PX * 0.30)
+        L, W = PX * rnd.uniform(0.10, 0.17), PX * rnd.uniform(0.030, 0.048)
+        ang = rnd.uniform(-1.5, 1.5)
+        poly = []
+        for t in range(15):
+            u = t / 14
+            poly.append(((u - 0.5) * L, math.sin(math.pi * u) * W / 2))
+        for t in range(14, -1, -1):
+            u = t / 14
+            poly.append(((u - 0.5) * L, -math.sin(math.pi * u) * W / 2))
+        ca, sa = math.cos(ang), math.sin(ang)
+        d.polygon([(ox + px * ca - py * sa, oy + px * sa + py * ca) for px, py in poly],
+                  fill=(*leaf_col, rnd.randint(58, 104)))
+    canvas.alpha_composite(layer.filter(ImageFilter.GaussianBlur(1.1)))
 
 
 def _layout_banner(canvas, art, brief, th):

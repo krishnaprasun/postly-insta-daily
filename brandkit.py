@@ -300,6 +300,42 @@ def crest(draw: ImageDraw.ImageDraw, cx: int, y: int, size: int, color=GOLD) -> 
                      fill=(*color, 200))
 
 
+def sprig(size: int, leaf=(74, 148, 86), berry=GOLD, seed: int = 0) -> Image.Image:
+    """A small leaf-and-berry cluster, drawn to sit ON the lettering.
+
+    The reference creatives tuck a leaf into the occasion name so the type and
+    the artwork read as one drawing rather than two stacked layers. This is that
+    ornament, procedural so it can be tinted per theme.
+    """
+    import math
+    import random
+    im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im, "RGBA")
+    rnd = random.Random(seed)
+    cx, cy = size * 0.5, size * 0.55
+    # a curving stem
+    pts = [(cx - size * 0.34 + i * size * 0.09,
+            cy + math.sin(i * 0.8) * size * 0.10) for i in range(8)]
+    d.line(pts, fill=(*_shade(leaf, 0.75), 235), width=max(2, size // 26), joint="curve")
+    for i, (x, y) in enumerate(pts[1:7]):
+        ang = -0.9 if i % 2 == 0 else 0.9
+        L, W = size * rnd.uniform(0.26, 0.36), size * rnd.uniform(0.11, 0.15)
+        poly = []
+        for t in range(13):
+            u = t / 12
+            poly.append(((u - 0.5) * L, math.sin(math.pi * u) * W / 2))
+        for t in range(12, -1, -1):
+            u = t / 12
+            poly.append(((u - 0.5) * L, -math.sin(math.pi * u) * W / 2))
+        ca, sa = math.cos(ang), math.sin(ang)
+        d.polygon([(x + px * ca - py * sa, y + px * sa + py * ca) for px, py in poly],
+                  fill=(*leaf, 240))
+    for x, y in (pts[2], pts[5]):
+        r = size * 0.055
+        d.ellipse([x - r, y - r * 1.6, x + r, y + r * 0.4], fill=(*berry, 245))
+    return im
+
+
 def ornament(draw: ImageDraw.ImageDraw, cx: int, y: int, w: int, color=GOLD) -> None:
     """The small diamond-and-rule divider used between text blocks."""
     half = w // 2
