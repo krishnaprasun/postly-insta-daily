@@ -196,7 +196,9 @@ VARIANTS = [
 
 
 def variant(i: int) -> dict:
-    return VARIANTS[i % len(VARIANTS)]
+    v = dict(VARIANTS[i % len(VARIANTS)])
+    v["idx"] = i
+    return v
 
 
 def pool_size() -> int:
@@ -212,6 +214,24 @@ def system_for(v: dict, allow_likeness: bool = False) -> str:
                                    opposite=v.get("opposite", "right half"))
     return SUBJECT_SYSTEM.format(no_text=_NO_TEXT, people=people, culture=_CULTURE,
                                  islamic=_ISLAMIC)
+
+
+# For a person, the object angles fight the portrait: asked for "ONE physical
+# object" AND "a dignified portrait of Rajiv Gandhi", the model resolves the
+# conflict by putting the face INSIDE an object — a framed tablet, a jewelled
+# medallion, a vector emblem. These angles are portrait-shaped instead.
+PERSON_ANGLES = [
+    "FRAMING: a formal portrait, head and shoulders, plain and dignified. No frame, no medallion, "
+    "no object around them — just the person.",
+    "FRAMING: the person in their working world — at a desk, among people, in the building or "
+    "landscape they are associated with. Environmental portrait, three-quarter length.",
+    "FRAMING: NO FACE AT ALL. Their emblem and belongings only — the objects that stand for their "
+    "life and work, arranged as a still life.",
+    "FRAMING: the person small against a large national setting at dusk — architecture, sky, "
+    "distance. Atmosphere over likeness.",
+    "FRAMING: a bold poster portrait, high-contrast and graphic, in the visual language of a "
+    "political poster. Strong silhouette, few colours.",
+]
 
 
 def build_prompt(brief: dict, v: dict) -> str:
@@ -231,7 +251,15 @@ def build_prompt(brief: dict, v: dict) -> str:
         bits.append(f"MUST AVOID: {b['avoid']}")
     if b.get("tone") in ("tribute", "tribute_somber", "remembrance"):
         bits.append("THIS IS A TRIBUTE — restrained and somber, absolutely no celebration.")
-    if v.get("angle"):
+    if b.get("show_person"):
+        # index is carried on the variant so the person angles stay in step
+        bits.append(PERSON_ANGLES[v.get("idx", 0) % len(PERSON_ANGLES)])
+        bits.append("Do NOT enclose the face in a frame, tablet, screen, medallion or ornamental "
+                    "disc — a former head of government rendered as a jewelled icon reads as "
+                    "religious, not civic. No forehead tilak or devotional marks unless the person "
+                    "actually wore them. No circuit-board or technology motifs unless the brief "
+                    "explicitly asks for them.")
+    elif v.get("angle"):
         bits.append(v["angle"] + " Do NOT default to a geometric medallion or mandala unless this "
                     "angle calls for it — five near-identical patterned discs is a failed set.")
     bits.append(v["direction"])
