@@ -91,7 +91,12 @@ Return RAW JSON with exactly these keys:
                    blessing or greeting words — no कृपा, no शुभकामनाएं, no नमन, no आशीर्वाद —
                    those belong in suffix_hi, and repeating them reads as a duplication
                    ('शनिदेव कृपा' + 'की कृपा आप पर बनी रहे').>",
-  "prefix_hi": "<short lead-in line. It is printed ABOVE the name and read as part of the SAME
+  "prefix_hi": "<PICK ONE OF EXACTLY THESE, nothing else:
+                   \"आप सभी को\"   — festivals and greeting days (आप सभी को X की शुभकामनाएं)
+                   \"आप सभी पर\"   — deity blessings (आप सभी पर X की कृपा बनी रहे)
+                   \"\"            — EMPTY for a person's jayanti/punyatithi, and for सुप्रभात
+                 Do not invent your own lead-in. It is printed ABOVE the name and read as part of
+                 the SAME
                  sentence, so it must agree with suffix_hi:
                    'की हार्दिक शुभकामनाएं!'  -> prefix 'आप सभी को'   (आप सभी को X की शुभकामनाएं ✓)
                    'की कृपा आप पर बनी रहे'   -> prefix 'आप सभी पर'  or EMPTY
@@ -113,6 +118,9 @@ Return RAW JSON with exactly these keys:
   "blessing_hi": "<one warm closing line in Hindi, MAX 14 words. For a tribute, a line of
                    remembrance instead — never a blessing for prosperity.>",
   "blessing_variants": ["<FIVE different closing lines, same occasion and tone, each MAX 14 words.
+                   For a PERSON: speak to what they built and what the country carries forward.
+                   Do not thank them ("धन्यवाद" reads transactional towards a national figure) and
+                   do not invoke बलिदान/martyrdom unless they were actually killed for the country.
                    One is used per design, so they must be genuinely DIFFERENT thoughts — not the
                    same sentence reworded. Vary the angle: a blessing, a wish for the family, a
                    line about the day's meaning, a warm greeting, a short reflection.>"],
@@ -251,6 +259,26 @@ def build(ev: Dict) -> Dict:
     if not b["blessing_variants"] and b.get("blessing_hi"):
         b["blessing_variants"] = [b["blessing_hi"]]
 
+    # The lead-in is printed above the name and read into the same sentence, so a
+    # free-form phrase scrambles it: "हम सब करते हैं / राजीव गांधी / जयंती पर शत्-शत् नमन"
+    # only parses if the lead-in comes AFTER the name. Restricted to the three
+    # forms that are known to read correctly in that position.
+    _ALLOWED_PREFIX = {"आप सभी को", "आप सभी पर", ""}
+    pre = b.get("prefix_hi", "").strip()
+    if pre not in _ALLOWED_PREFIX:
+        suf = b.get("suffix_hi", "")
+        if is_jayanti or _punya or ev.get("_generic") == "morning":
+            b["prefix_hi"] = ""                       # the name stands alone
+        elif "कृपा" in suf:
+            b["prefix_hi"] = "आप सभी पर"
+        elif suf.startswith("की"):
+            b["prefix_hi"] = "आप सभी को"
+        else:
+            b["prefix_hi"] = ""
+        if pre:
+            print(f"[brief] prefix {pre!r} would not join; using "
+                  f"{b['prefix_hi']!r}", flush=True)
+
     # "की कृपा ... बनी रहे" takes पर, not को. The model reaches for the stock
     # "आप सभी को" lead-in regardless of what follows, which prints as
     # "आप सभी को साईं बाबा की कृपा बनी रहे" — wrong case marker.
@@ -270,6 +298,15 @@ def build(ev: Dict) -> Dict:
             if "श्रद्धांजलि" in b.get(fld, ""):
                 b[fld] = " ".join(w for w in b[fld].split()
                                   if "श्रद्धांजलि" not in w and w != "विनम्र").strip()
+        # The per-variant lines needed the same treatment: the first version of
+        # this guard predated blessing_variants, so a jayanti still shipped
+        # "उनकी स्मृति को विनम्र श्रद्धांजलि" on one of the five designs.
+        before = len(b["blessing_variants"])
+        b["blessing_variants"] = [x for x in b["blessing_variants"]
+                                  if "श्रद्धांजलि" not in x and "पुण्यतिथि" not in x]
+        if len(b["blessing_variants"]) != before:
+            print(f"[brief] dropped {before - len(b['blessing_variants'])} funerary line(s) "
+                  "from a jayanti", flush=True)
         if not b["suffix_hi"]:
             b["suffix_hi"] = "जयंती पर शत्-शत् नमन"
 
