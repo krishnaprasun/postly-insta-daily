@@ -20,10 +20,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Fail the BUILD if Devanagari cannot be shaped — finding out at generation time
-# costs a day's post and a confusing debug session.
-RUN python -c "import imaging, sys; ok = imaging.shaping_available(); \
-    print('[build] devanagari shaping:', ok); sys.exit(0 if ok else 1)"
+# Report Devanagari shaping loudly, but do NOT fail the build on it. The check
+# itself has been wrong once (it compared widths, and a tofu run measures about
+# the same as a shaped conjunct), and a false negative there blocks every deploy.
+# /healthz reports the same value, so a genuine failure is one request away.
+RUN python -c "import imaging; print('[build] devanagari shaping:', imaging.shaping_available())"
 
 EXPOSE 8000
 CMD ["gunicorn", "-w", "1", "-t", "600", "-b", "0.0.0.0:8000", "app:app"]

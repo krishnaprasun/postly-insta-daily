@@ -89,22 +89,27 @@ def hindi(text: str, size: int, color=NAVY, bold: bool = True) -> Optional[Image
 
 
 def shaping_available() -> bool:
-    """Can this host actually draw Devanagari?
+    """Can this host actually draw Devanagari, or only .notdef boxes?
 
-    The old check only asked whether the render was wider than 4px — and a row of
-    .notdef tofu boxes is wider than 4px, so it passed while the output was
-    unreadable. A missing-glyph control is rendered alongside real text; if the
-    real text comes out the same shape as the control, the font has no Devanagari.
+    Compares the SHAPE of real Devanagari against a private-use control string
+    that no font defines. If both come out as the same boxes, the font has no
+    Devanagari and every post would ship unreadable.
+
+    Width alone is not enough — the first version of this compared widths and a
+    four-glyph tofu run happens to measure about the same as a shaped conjunct,
+    so it failed a healthy Linux build. Shape comparison is unambiguous.
     """
-    real = hindi("क्षत्रिय", 40)
-    if real is None or real.width < 6:
+    real = hindi("क्षत्रिय", 48)
+    if real is None or real.width < 6 or real.height < 6:
         return False
-    control = hindi("\ue000\ue001\ue002\ue003", 40)   # private-use: always .notdef
-    if control is None:
-        return True
-    # tofu is fixed-width per glyph, so a 4-char control and 4-char Devanagari
-    # string land within a few px of each other; real shaping differs clearly.
-    return abs(real.width - control.width) > max(6, control.width * 0.12)
+    control = hindi("\ue000\ue001\ue002\ue003", 48)
+    if control is None or control.width < 6 or control.height < 6:
+        return True                    # undefined glyphs draw nothing: font is fine
+    a = real.split()[3].resize((64, 32))
+    b = control.split()[3].resize((64, 32))
+    pa, pb = list(a.getdata()), list(b.getdata())
+    diff = sum(abs(x - y) for x, y in zip(pa, pb)) / (len(pa) * 255.0)
+    return diff > 0.06                 # identical shapes => tofu
 
 
 def fit(text: str, size: int, max_w: int, color=NAVY, bold: bool = True) -> Optional[Image.Image]:
