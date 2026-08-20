@@ -112,9 +112,65 @@ def shaping_available() -> bool:
     return diff > 0.06                 # identical shapes => tofu
 
 
-def fit(text: str, size: int, max_w: int, color=NAVY, bold: bool = True) -> Optional[Image.Image]:
+def _shade(c, f: float):
+    """Lighten (f>1) or darken (f<1) a colour, clamped."""
+    return tuple(max(0, min(255, int(v * f))) for v in c)
+
+
+def styled_hindi(text: str, size: int, color, bold: bool = True,
+                 gradient: bool = True, outline: bool = True,
+                 shadow_alpha: int = 58) -> Optional[Image.Image]:
+    """Display-weight Devanagari: gradient fill, outline and a soft drop shadow.
+
+    Flat single-colour type is what made the headline read as a caption rather
+    than as designed lettering. The reference creatives set the occasion name in
+    graduated colour with depth behind it; this is that treatment, applied to
+    correctly shaped Devanagari.
+    """
+    base = hindi(text, size, (255, 255, 255), bold)
+    if base is None:
+        return None
+    a = base.split()[3]
+    w, h = base.size
+    pad = max(6, size // 10)
+    canvas = Image.new("RGBA", (w + pad * 2, h + pad * 2), (0, 0, 0, 0))
+
+    if shadow_alpha:
+        sh = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        sh.paste(Image.new("RGBA", base.size, (0, 0, 0, shadow_alpha)),
+                 (pad, pad + max(2, size // 22)), a)
+        canvas.alpha_composite(sh.filter(ImageFilter.GaussianBlur(max(2, size / 34))))
+
+    if outline:
+        ow = max(1, size // 52)
+        grown = a
+        for _ in range(ow):
+            grown = grown.filter(ImageFilter.MaxFilter(3))
+        ol = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        ol.paste(Image.new("RGBA", base.size, (*_shade(color, 0.62), 255)), (pad, pad), grown)
+        canvas.alpha_composite(ol)
+
+    if gradient:
+        g = Image.new("RGB", (1, h))
+        top, bot = _shade(color, 1.32), _shade(color, 0.68)
+        for y in range(h):
+            t = y / max(1, h - 1)
+            g.putpixel((0, y), tuple(int(top[i] + (bot[i] - top[i]) * t) for i in range(3)))
+        fill = g.resize((w, h)).convert("RGBA")
+    else:
+        fill = Image.new("RGBA", base.size, (*color, 255))
+    face = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    face.paste(fill, (pad, pad), a)
+    canvas.alpha_composite(face)
+
+    bbox = canvas.split()[3].getbbox()
+    return canvas.crop(bbox) if bbox else canvas
+
+
+def fit(text: str, size: int, max_w: int, color=NAVY, bold: bool = True,
+        styled: bool = False) -> Optional[Image.Image]:
     """Render Devanagari at `size`, scaled down if it would exceed max_w."""
-    im = hindi(text, size, color, bold)
+    im = styled_hindi(text, size, color, bold) if styled else hindi(text, size, color, bold)
     if im is None:
         return None
     if im.width > max_w:

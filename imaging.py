@@ -166,16 +166,18 @@ def _text_block(brief: Dict, th: Dict, max_w: int, scale: float = 1.0,
         if im:
             rows.append((im, S(14)))
 
+    # The occasion name gets display treatment — gradient, outline, depth. Flat
+    # type made the hero line read as a caption instead of as lettering.
     a, b = bk.split_headline(occ)
     if a:
-        im = bk.fit(a, S(126), max_w, th["acc1"])
+        im = bk.fit(a, S(126), max_w, th["acc1"], styled=True)
         if im is None:
             return None
-        rows.append((im, S(4) if b else S(16)))
+        rows.append((im, S(2) if b else S(14)))
     if b:
-        im = bk.fit(b, S(104), max_w, th["acc2"])
+        im = bk.fit(b, S(104), max_w, th["acc2"], styled=True)
         if im:
-            rows.append((im, S(16)))
+            rows.append((im, S(14)))
     if suf:
         for im in bk.wrap(suf, S(42), max_w, th["ink"], max_lines=2):
             rows.append((im, S(8)))
