@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 import config
 import imaging
 import llm
+import portraits
 import prompts
 
 TEXT_QA_PROMPT = (
@@ -110,14 +111,24 @@ def one_variant(i: int, brief: Dict) -> Dict:
     v = prompts.variant(i)
     out = {"index": i, "style": v["name"], "ok": False}
     try:
-        prompt = prompts.build_prompt(brief, v)
-        system = prompts.system_for(v, allow_likeness=bool(brief.get("show_person")))
-        out["prompt"] = prompt
-        res = _art(prompt, system)
+        # A real photograph beats a generated likeness whenever we have one. Not
+        # used on the no-face framing, which is deliberately about their emblems.
+        photo = None
+        if brief.get("show_person") and not prompts.is_faceless(v):
+            photo = portraits.load(brief.get("person_name_en", ""))
+        if photo:
+            out["source"] = "photo"
+            res = {"art": photo, "text_qa": False, "retried": False}
+        else:
+            prompt = prompts.build_prompt(brief, v)
+            system = prompts.system_for(v, allow_likeness=bool(brief.get("show_person")))
+            out["prompt"] = prompt
+            out["source"] = "generated"
+            res = _art(prompt, system)
         if not res.get("art"):
             out["error"] = res.get("error", "generation failed")
             return out
-        if brief.get("show_person"):
+        if brief.get("show_person") and out.get("source") != "photo":
             out["likeness_ok"] = _likeness_ok(res["art"], brief.get("likeness_of", ""))
         img, notes = imaging.compose(res["art"], brief, i)
         if not notes.get("shaping"):

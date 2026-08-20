@@ -237,6 +237,13 @@ def build(ev: Dict) -> Dict:
               "caption_hi", "caption_en", "occasion_en", "person_name_en", "portrait_concept"):
         b[k] = str(b.get(k, "")).strip()
 
+    # Saffron carries party association in India, so it is the wrong ground for a
+    # post about a political figure regardless of which party — it reads as a
+    # statement the brand is not making.
+    b["political"] = (ev.get("type") == "Figure" and
+                      any(k in (ev.get("category") or "")
+                          for k in ("Politics", "National Icon")))
+
     # Palette decision, made deterministically from the OCCASION rather than from
     # the model's tone word. A Punyatithi (death anniversary) is muted. A Jayanti
     # is a celebration of the person's birth and stays festive — greying it out
@@ -255,8 +262,12 @@ def build(ev: Dict) -> Dict:
     living = (ev.get("warnings") and any("LIVING" in w for w in ev["warnings"]))
     b["show_person"] = bool(b.get("show_person")) and not living and bool(b.get("portrait_concept"))
     if b["show_person"]:
-        b["needs_human_check"] = True
         b["likeness_of"] = b.get("person_name_en", "")
+        import portraits
+        if portraits.find(b["likeness_of"]):
+            b["has_portrait"] = True       # a real photograph; nothing to verify
+        else:
+            b["needs_human_check"] = True
         b["check_reason"] = ((b.get("check_reason", "") + " | ") if b.get("check_reason") else "") + \
             "Generated likeness of a real person — check the portrait actually looks like them."
     b["needs_human_check"] = bool(b.get("needs_human_check")) or bool(ev.get("warnings"))

@@ -174,6 +174,8 @@ def _save_variant(run_id: int, r: Dict, label: str = "") -> bool:
             flags.append("possible text in artwork")
         if r.get("likeness_ok") is False:
             flags.append("this looks like a different person — check before posting")
+        if r.get("source") == "photo":
+            flags.append("real photograph from assets/portraits")
         db.add_variant(run_id, r["index"], style, fn, text_qa=r.get("text_qa"),
                        prompt=r.get("prompt", ""), flags="; ".join(flags))
         return True

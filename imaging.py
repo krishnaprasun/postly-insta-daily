@@ -418,6 +418,8 @@ def layout_name(i: int) -> str:
 
 def compose(art_bytes: bytes, brief: Dict, variant: int = 0) -> Tuple[bytes, Dict]:
     v = prompts.variant(variant)
+    if brief.get("political") and v["theme"] == "saffron-sunburst":
+        v = dict(v, theme="sky-ivory")     # neutral ground for a political figure
     # Each design gets its own complete write-up — greeting line, lead-in and
     # closing line — so the five are five choices, not one post five times.
     tv = brief.get("text_variants") or []

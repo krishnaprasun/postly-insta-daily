@@ -83,6 +83,17 @@ reads as mourning on the wrong day — while the copy stays respectful either wa
 
 ## Portraits of leaders
 
+**Real photographs beat generated ones.** Across five designs a generated
+likeness gives five different men, none of them clearly the person, and no prompt
+fixes that. Drop a licensed photograph into `assets/portraits/rajiv-gandhi.jpg`
+and the face-bearing designs use it instead, with the likeness warning switched
+off. See `assets/portraits/README.md`. `/healthz` lists what is on file.
+
+Saffron is never used as the ground for a political figure — the colour carries
+party association in India, and it reads as a statement the brand is not making.
+Festivals still use it.
+
+
 A Gandhi Jayanti post without Gandhi is a weaker post, so the blanket ban on
 depicting real people is now scoped: the model may render a faithful, dignified
 likeness of a **deceased** Indian national figure, and is told to fall back to

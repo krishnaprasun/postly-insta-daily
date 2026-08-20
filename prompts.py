@@ -234,6 +234,11 @@ PERSON_ANGLES = [
 ]
 
 
+def is_faceless(v: dict) -> bool:
+    """True for the person framing that deliberately shows no face."""
+    return bool(v.get("show_person_faceless")) or (v.get("idx", 0) % len(PERSON_ANGLES)) == 2
+
+
 def build_prompt(brief: dict, v: dict) -> str:
     b = brief
     subject = b.get("portrait_concept") if b.get("show_person") else b.get("visual_concept")

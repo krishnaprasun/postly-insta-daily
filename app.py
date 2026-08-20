@@ -330,6 +330,7 @@ def healthz():
         "calendar_covers_today": bool(lo and hi and lo <= daily.today_ist() <= hi),
         "devanagari_shaping": imaging.shaping_available(),
         "instagram": publisher.preflight(),
+        "portraits_on_file": __import__("portraits").available(),
         "scheduler": config.SCHEDULER_ENABLED,
         "run_at_ist": f"{config.RUN_HOUR_IST:02d}:{config.RUN_MINUTE_IST:02d}",
     })
