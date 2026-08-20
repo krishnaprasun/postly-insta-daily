@@ -117,7 +117,17 @@ Return RAW JSON with exactly these keys:
                  change occasion_hi to a plain name so that they do.>",
   "blessing_hi": "<one warm closing line in Hindi, MAX 14 words. For a tribute, a line of
                    remembrance instead — never a blessing for prosperity.>",
-  "blessing_variants": ["<FIVE different closing lines, same occasion and tone, each MAX 14 words.
+  "suffix_variants": ["<FIVE alternative greeting lines, each a valid replacement for suffix_hi.
+                   Every one must read on grammatically from the name, exactly as suffix_hi does.
+                   Festival: 'की हार्दिक शुभकामनाएं!', 'की ढेर सारी शुभकामनाएं', 'की शुभकामनाएं!'
+                   Jayanti:  'जयंती पर शत्-शत् नमन', 'जयंती पर विनम्र नमन', 'को सादर नमन'
+                   Deity:    'की कृपा आप पर बनी रहे', 'का आशीर्वाद सदा बना रहे'
+                   Keep them SHORT (max 5 words) and keep the tone identical.>"],
+  "blessing_variants": ["<SEVEN different closing lines, same occasion and tone, each MAX 14 words.
+                   Give each a DIFFERENT ANGLE. For a person: (a) what they achieved, (b) a quality
+                   worth carrying, (c) what the country inherited, (d) a plain salute, (e) a
+                   forward-looking pledge, (f) a line about the day itself, (g) a short reflection.
+                   Seven, because near-duplicates and unusable lines get discarded.
                    For a PERSON: speak to what they built and what the country carries forward.
                    Do not thank them ("धन्यवाद" reads transactional towards a national figure) and
                    do not invoke बलिदान/martyrdom unless they were actually killed for the country.
@@ -166,6 +176,8 @@ def _fallback(ev: Dict) -> Dict:
         "suffix_hi": "विनम्र श्रद्धांजलि" if tribute else "की हार्दिक शुभकामनाएं!",
         "blessing_hi": "",
         "blessing_variants": [],
+        "suffix_variants": [],
+        "text_variants": [],
         "quote_hi": "",
         "show_person": False,
         "person_name_en": "",
@@ -206,10 +218,20 @@ def build(ev: Dict) -> Dict:
         tags = [t.strip() for t in tags.replace("#", "").split() if t.strip()]
     b["hashtags"] = [str(t).lstrip("#").strip()[:40] for t in tags if str(t).strip()][:12]
 
-    bv = b.get("blessing_variants") or []
-    if isinstance(bv, str):
-        bv = [bv]
-    b["blessing_variants"] = [str(x).strip() for x in bv if str(x).strip()][:8]
+    def _listify(key, cap):
+        v = b.get(key) or []
+        if isinstance(v, str):
+            v = [v]
+        out, seen = [], set()
+        for x in v:
+            x = str(x).strip()
+            if x and x.lower() not in seen:
+                seen.add(x.lower())
+                out.append(x)
+        return out[:cap]
+
+    b["blessing_variants"] = _listify("blessing_variants", 10)
+    b["suffix_variants"] = _listify("suffix_variants", 8)
 
     for k in ("occasion_hi", "prefix_hi", "suffix_hi", "blessing_hi", "quote_hi",
               "caption_hi", "caption_en", "occasion_en", "person_name_en", "portrait_concept"):
@@ -322,6 +344,46 @@ def build(ev: Dict) -> Dict:
         b["occasion_hi"] = ev["deity_hi"]
         if b["suffix_hi"] and not b["suffix_hi"].startswith("की"):
             b["suffix_hi"] = "की " + b["suffix_hi"].lstrip("की ").strip()
+
+    # Build one complete text set PER DESIGN, so the five options differ in the
+    # greeting line as well as the closing line. The lead-in is derived from each
+    # greeting rather than carried over, because को/पर depends on what follows.
+    def _prefix_for(suffix: str) -> str:
+        if is_jayanti or _punya or ev.get("_generic") == "morning":
+            return ""
+        if "कृपा" in suffix or "आशीर्वाद" in suffix:
+            return "आप सभी पर"
+        return "आप सभी को" if suffix.startswith("की") else ""
+
+    def _joins_after_name(x: str) -> bool:
+        """Does this greeting read on from a bare name?
+
+        For a person the name is followed directly by the greeting, so it has to
+        open with a case marker or the occasion word. A bare "पर ..." produced
+        "राजीव गांधी पर शत्-शत् नमन", which is not a sentence — it needs
+        "जयंती पर" or "को".
+        """
+        if not (is_jayanti or _punya):
+            return True
+        head = x.split()[0] if x.split() else ""
+        return head in ("को", "की", "के", "जयंती", "पुण्यतिथि", "जन्म")
+
+    sufs = [x for x in b["suffix_variants"]
+            if not (is_jayanti and ("श्रद्धांजलि" in x or "पुण्यतिथि" in x))
+            and _joins_after_name(x)]
+    if b["suffix_hi"] and b["suffix_hi"] not in sufs:
+        sufs.insert(0, b["suffix_hi"])
+    if not sufs:
+        sufs = [b["suffix_hi"]]
+
+    bles = b["blessing_variants"] or ([b["blessing_hi"]] if b.get("blessing_hi") else [""])
+    n_sets = max(5, config.VARIANT_COUNT)
+    b["text_variants"] = [
+        {"prefix": _prefix_for(sufs[i % len(sufs)]),
+         "suffix": sufs[i % len(sufs)],
+         "blessing": bles[i % len(bles)]}
+        for i in range(n_sets)
+    ]
 
     # occasion_hi is the hero of the template — without it there is no post
     if not b["occasion_hi"]:

@@ -355,12 +355,20 @@ def layout_name(i: int) -> str:
 
 def compose(art_bytes: bytes, brief: Dict, variant: int = 0) -> Tuple[bytes, Dict]:
     v = prompts.variant(variant)
-    # Each design carries a different closing line; five identical write-ups made
-    # the five options look like one post rendered five times.
-    bv = brief.get("blessing_variants") or []
-    if bv:
+    # Each design gets its own complete write-up — greeting line, lead-in and
+    # closing line — so the five are five choices, not one post five times.
+    tv = brief.get("text_variants") or []
+    if tv:
+        t = tv[variant % len(tv)]
         brief = dict(brief)
-        brief["blessing_hi"] = bv[variant % len(bv)]
+        brief["prefix_hi"] = t.get("prefix", brief.get("prefix_hi", ""))
+        brief["suffix_hi"] = t.get("suffix") or brief.get("suffix_hi", "")
+        brief["blessing_hi"] = t.get("blessing") or brief.get("blessing_hi", "")
+    else:
+        bv = brief.get("blessing_variants") or []
+        if bv:
+            brief = dict(brief)
+            brief["blessing_hi"] = bv[variant % len(bv)]
     th = themes.theme(v["theme"])
     tribute = _is_muted(brief)
     if tribute:
