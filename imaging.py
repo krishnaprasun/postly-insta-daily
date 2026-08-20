@@ -154,6 +154,11 @@ def _text_block(brief: Dict, th: Dict, max_w: int, scale: float = 1.0,
     def S(v):
         return max(14, int(v * scale))
 
+    # Fit to a slightly narrower box than the column. A line exactly as wide as
+    # the column sits flush against it and its outline gets shaved, which reads
+    # as the headline being cut off.
+    inner = max_w - max(6, int(max_w * 0.04))
+
     rows: List[Tuple[Image.Image, int]] = []
     pre = (brief.get("prefix_hi") or "").strip()
     occ = (brief.get("occasion_hi") or "").strip()
@@ -162,7 +167,7 @@ def _text_block(brief: Dict, th: Dict, max_w: int, scale: float = 1.0,
     body_text = (brief.get("quote_hi") or brief.get("blessing_hi") or "").strip()
 
     if pre:
-        im = bk.fit(pre, S(38), max_w, th["ink"])
+        im = bk.fit(pre, S(38), inner, th["ink"])
         if im:
             rows.append((im, S(14)))
 
@@ -170,16 +175,16 @@ def _text_block(brief: Dict, th: Dict, max_w: int, scale: float = 1.0,
     # type made the hero line read as a caption instead of as lettering.
     a, b = bk.split_headline(occ)
     if a:
-        im = bk.fit(a, S(126), max_w, th["acc1"], styled=True)
+        im = bk.fit(a, S(126), inner, th["acc1"], styled=True)
         if im is None:
             return None
         rows.append((im, S(2) if b else S(14)))
     if b:
-        im = bk.fit(b, S(104), max_w, th["acc2"], styled=True)
+        im = bk.fit(b, S(104), inner, th["acc2"], styled=True)
         if im:
             rows.append((im, S(14)))
     if suf:
-        for im in bk.wrap(suf, S(42), max_w, th["ink"], max_lines=2):
+        for im in bk.wrap(suf, S(42), inner, th["ink"], max_lines=2):
             rows.append((im, S(8)))
         if rows:
             rows[-1] = (rows[-1][0], S(22))
@@ -188,7 +193,7 @@ def _text_block(brief: Dict, th: Dict, max_w: int, scale: float = 1.0,
 
     crest_h = S(46)
     orn_h = S(48) if body_text else 0
-    body_imgs = bk.wrap(body_text, S(29), max_w, th["body"], bold=False, max_lines=4) \
+    body_imgs = bk.wrap(body_text, S(29), inner, th["body"], bold=False, max_lines=4) \
         if body_text else []
 
     total_h = crest_h + sum(im.height + g for im, g in rows) + orn_h + \
@@ -246,25 +251,29 @@ def _ground_shadow(canvas, x: int, y: int, w: int, dark: bool):
     canvas.alpha_composite(sh, (x - pad, y - 78))
 
 
-def _halo(canvas, x: int, y: int, w: int, h: int, dark: bool, strength: int = 168):
-    """A soft field behind the text so artwork can pass BEHIND it and stay legible.
+def _halo(canvas, blk: Image.Image, x: int, y: int, dark: bool, strength: int = 190):
+    """A soft glow that follows the LETTERS, so type stays legible over artwork.
 
-    Integration means the picture is allowed into the words' half of the frame.
-    Without something under the type it becomes unreadable the moment the art
-    drifts behind it; a feathered field keeps the words solid while letting the
-    artwork show around them.
+    This was a large ellipse behind the text block. Because the tint is lighter
+    than the ground, the ellipse's own edge showed as a pale vertical line
+    running down the frame and across the subject's face. A mask grown from the
+    text's own alpha has no such boundary — it fades out a few pixels past the
+    glyphs, wherever they happen to be.
     """
-    # Generous padding and a heavy blur: a tighter field leaves a visible edge
-    # running down the frame where the tint stops.
-    pad = int(max(w, h) * 0.40)
-    layer = Image.new("L", (w + pad * 2, h + pad * 2), 0)
-    ImageDraw.Draw(layer).ellipse([pad * 0.55, pad * 0.55,
-                                   w + pad * 1.45, h + pad * 1.45], fill=strength)
-    layer = layer.filter(ImageFilter.GaussianBlur(pad * 0.62))
-    tint = (10, 8, 16) if dark else (255, 253, 246)
-    field = Image.new("RGBA", layer.size, (*tint, 0))
-    field.putalpha(layer)
-    canvas.alpha_composite(field, (x - pad, y - pad))
+    a = blk.split()[3]
+    grow = a
+    for _ in range(5):
+        grow = grow.filter(ImageFilter.MaxFilter(5))
+    grow = grow.filter(ImageFilter.GaussianBlur(16))
+    grow = grow.point(lambda v: min(255, int(v * (strength / 255.0) * 2.1)))
+
+    pad = 60
+    field = Image.new("RGBA", (blk.width + pad * 2, blk.height + pad * 2), (0, 0, 0, 0))
+    tint = (8, 6, 14) if dark else (255, 254, 250)
+    solid = Image.new("RGBA", grow.size, (*tint, 255))
+    solid.putalpha(grow)
+    field.alpha_composite(solid, (pad, pad))
+    canvas.alpha_composite(field.filter(ImageFilter.GaussianBlur(6)), (x - pad, y - pad))
 
 
 # ── subject layouts (cutout floated on a painted canvas) ────────────────────
@@ -300,7 +309,7 @@ def _layout_hero(canvas, art, brief, th, mirror=False):
     if blk is None:
         return False
     by = top + max(0, int((bottom - top - blk.height) * 0.42))
-    _halo(canvas, bx, by, blk.width, blk.height, th["dark"])
+    _halo(canvas, blk, bx, by, th["dark"])
     canvas.alpha_composite(blk, (bx, by))
 
     # Foliage drawn in FRONT of both halves, crossing the seam where the artwork
