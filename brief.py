@@ -20,6 +20,12 @@ import llm
 
 BRIEF_SYS = """You are a creative director for an Indian consumer brand's Instagram handle.
 You write Hindi that is natural, correctly spelled and idiomatic — never machine-literal.
+
+SCRIPT (absolute): every Hindi field must be written in DEVANAGARI only. For a Muslim occasion
+write the Urdu-origin words in Devanagari — "अल्लाह", "रहमत", "मुबारकबाद", "रसूले पाक" — never in
+Arabic script, and never insert Arabic characters or honorific glyphs such as ﷺ. The design system
+renders Devanagari; anything else prints as empty boxes on the finished post.
+
 Answer with RAW JSON only: no markdown fences, no commentary."""
 
 TONE_RULES = """TONE RULES (these are not negotiable):
@@ -234,6 +240,17 @@ def build(ev: Dict) -> Dict:
                   "barsi", "smriti diwas"))
     is_jayanti = ("jayanti" in name_all or "birth anniversary" in name_all) and not _punya
 
+    # Anything the Devanagari font cannot draw is dropped rather than printed as
+    # empty boxes. The headline falls back; the blessings just lose the bad ones.
+    b["blessing_variants"] = [x for x in b["blessing_variants"] if _devanagari_ok(x)]
+    for fld in ("prefix_hi", "occasion_hi", "suffix_hi", "blessing_hi", "quote_hi"):
+        if b.get(fld) and not _devanagari_ok(b[fld]):
+            print(f"[brief] {fld} was not Devanagari, dropping: {b[fld][:40]!r}", flush=True)
+            b[fld] = ""
+
+    if not b["blessing_variants"] and b.get("blessing_hi"):
+        b["blessing_variants"] = [b["blessing_hi"]]
+
     # "की कृपा ... बनी रहे" takes पर, not को. The model reaches for the stock
     # "आप सभी को" lead-in regardless of what follows, which prints as
     # "आप सभी को साईं बाबा की कृपा बनी रहे" — wrong case marker.
@@ -275,6 +292,21 @@ def build(ev: Dict) -> Dict:
     if not b["suffix_hi"]:
         b["suffix_hi"] = _fallback(ev)["suffix_hi"]
     return b
+
+
+def _devanagari_ok(text: str) -> bool:
+    """Is every letter in this string one the Devanagari font can draw?
+
+    For Islamic occasions the model sometimes answers in Urdu (Arabic script).
+    That is perfectly good Urdu and completely unrenderable here — it comes out
+    as a row of empty boxes on the finished post, which is worse than plain.
+    """
+    for ch in text:
+        if ch.isspace() or not ch.isalpha():
+            continue
+        if not ("\u0900" <= ch <= "\u097F"):            # Devanagari block
+            return False
+    return True
 
 
 def caption_text(brief: Dict, lang: str = "hi") -> str:

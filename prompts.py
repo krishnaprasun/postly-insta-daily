@@ -99,23 +99,33 @@ devotional setting, delicate particles or bokeh. Premium editorial finish, never
 
 VARIANTS = [
     {"name": "Ivory botanical", "mode": "subject", "theme": "ivory-botanical",
+     "angle": "SUBJECT ANGLE: ONE physical object you could hold or place on a table — the single "
+              "most evocative object of this occasion, rendered large and detailed.",
      "direction": "STYLE: photorealistic, clean daylight, crisp real textures, premium "
                   "product-photography finish on pure white. Fresh and airy."},
     {"name": "Scene card", "mode": "scene", "theme": "scene-card", "zone": "LEFT HALF",
      "opposite": "right half",
+     "angle": "SUBJECT ANGLE: a PLACE — the setting where this occasion actually happens, with "
+              "architecture and depth receding behind the subject.",
      "direction": "STYLE: photorealistic and cinematic — soft depth of field, warm golden hour "
                   "light, foliage or florals framing the top-right, a real Indian setting with "
                   "genuine depth behind the subject."},
     {"name": "Royal maroon", "mode": "subject", "theme": "royal-maroon",
+     "angle": "SUBJECT ANGLE: an ORNAMENT or emblem of the occasion — a decorative crafted piece, "
+              "medallion, lamp or vessel, treated like a jewellery photograph.",
      "direction": "STYLE: opulent and jewel-like — heavy gold filigree, intricate metalwork, "
                   "gemstone accents, dramatic rim lighting and deep shadow. Regal and ornate, "
                   "isolated on pure white."},
     {"name": "Painted scene", "mode": "scene", "theme": "scene-wash", "zone": "BOTTOM HALF",
      "opposite": "top half",
+     "angle": "SUBJECT ANGLE: a NIGHT SCENE with atmosphere — sky, lamps, distant silhouettes, "
+              "people or life in the middle distance. Mood over object.",
      "direction": "STYLE: rich hand-painted illustration at night or dusk — luminous lamps and "
-                  "moonlight, decorative border motifs, mandala or rangoli geometry worked into "
-                  "the setting, deep blues and violets with warm lamp glow."},
+                  "moonlight, decorative border motifs, deep blues and violets with warm lamp "
+                  "glow. Keep the upper-centre clear of detail: a logo sits there."},
     {"name": "Saffron graphic", "mode": "subject", "theme": "saffron-sunburst",
+     "angle": "SUBJECT ANGLE: a SYMBOL reduced to its simplest recognisable shape — one bold "
+              "silhouette, no ornament, readable at a glance.",
      "direction": "STYLE: bold flat-graphic vector treatment — clean geometric shapes, strong "
                   "silhouette, minimal detail, confident poster art. High contrast, few colours, "
                   "isolated on pure white."},
@@ -154,6 +164,9 @@ def build_prompt(brief: dict, v: dict) -> str:
         bits.append(f"MUST AVOID: {b['avoid']}")
     if b.get("tone") in ("tribute", "tribute_somber", "remembrance"):
         bits.append("THIS IS A TRIBUTE — restrained and somber, absolutely no celebration.")
+    if v.get("angle"):
+        bits.append(v["angle"] + " Do NOT default to a geometric medallion or mandala unless this "
+                    "angle calls for it — five near-identical patterned discs is a failed set.")
     bits.append(v["direction"])
     if v["mode"] == "scene":
         bits.append(f"Keep the {v.get('zone', 'LEFT HALF')} calm for type. NO text in the image.")
