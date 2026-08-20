@@ -129,11 +129,78 @@ VARIANTS = [
      "direction": "STYLE: bold flat-graphic vector treatment — clean geometric shapes, strong "
                   "silhouette, minimal detail, confident poster art. High contrast, few colours, "
                   "isolated on pure white."},
+    # ── second set: what "regenerate five different" serves ──
+    {"name": "Midnight teal", "mode": "subject", "theme": "midnight-teal",
+     "angle": "SUBJECT ANGLE: an offering or ritual item arranged for the occasion — what a "
+              "person actually holds, lights or gives that day.",
+     "direction": "STYLE: photorealistic, low-key lighting, a single warm light source raking "
+                  "across the subject, deep shadow. Isolated on pure white."},
+    {"name": "Blush rose", "mode": "subject", "theme": "blush-rose",
+     "angle": "SUBJECT ANGLE: FLOWERS and soft natural material tied to the occasion — a garland, "
+              "petals, a bloom, fabric.",
+     "direction": "STYLE: soft daylight, delicate and airy, gentle shadows, fine texture. "
+                  "Isolated on pure white."},
+    {"name": "Paper craft", "mode": "subject", "theme": "paper-craft",
+     "angle": "SUBJECT ANGLE: the occasion built from LAYERED PAPER — a paper-cut diorama of its "
+              "most recognisable shape.",
+     "direction": "STYLE: layered paper-craft illustration, visible cut edges and soft drop "
+                  "shadows between layers, warm muted palette. Isolated on pure white."},
+    {"name": "Emerald clean", "mode": "subject", "theme": "emerald-clean",
+     "angle": "SUBJECT ANGLE: a single ICON of the occasion, drawn simply and centred, no scene.",
+     "direction": "STYLE: clean modern 3D render, smooth matte surfaces, soft studio light, "
+                  "restrained palette. Isolated on pure white."},
+    {"name": "Violet dusk", "mode": "scene", "theme": "violet-dusk", "zone": "BOTTOM HALF",
+     "opposite": "top half",
+     "angle": "SUBJECT ANGLE: the sky and the horizon at dusk, with the occasion's silhouette "
+              "against it.",
+     "direction": "STYLE: painterly dusk illustration, violet and rose sky, silhouettes, drifting "
+                  "light. Keep the upper-centre clear of detail: a logo sits there."},
+    {"name": "Sky ivory", "mode": "subject", "theme": "sky-ivory",
+     "angle": "SUBJECT ANGLE: something in MOTION or in the air for this occasion — a kite, birds, "
+              "smoke, water, cloth caught mid-air.",
+     "direction": "STYLE: bright airy photography, pale cool daylight, lots of white space, crisp "
+                  "edges. Isolated on pure white."},
+    {"name": "Charcoal gold", "mode": "subject", "theme": "charcoal-gold",
+     "angle": "SUBJECT ANGLE: a fine line-art emblem of the occasion, as if engraved.",
+     "direction": "STYLE: delicate gold line engraving on nothing — thin metallic strokes, no "
+                  "fill, jewellery-catalogue precision. Isolated on pure white."},
+    {"name": "Frosted scene", "mode": "scene", "theme": "scene-frost", "zone": "LEFT HALF",
+     "opposite": "right half",
+     "angle": "SUBJECT ANGLE: hands and human detail — the occasion as people actually perform it, "
+              "close in.",
+     "direction": "STYLE: warm documentary photography, natural light, shallow focus, real texture "
+                  "and imperfection."},
+    # ── third set ──
+    {"name": "Ivory close-up", "mode": "subject", "theme": "ivory-botanical",
+     "angle": "SUBJECT ANGLE: an extreme CLOSE-UP of one detail — texture, grain, weave, flame.",
+     "direction": "STYLE: macro photography, exquisite detail, shallow depth. Isolated on white."},
+    {"name": "Maroon still life", "mode": "subject", "theme": "royal-maroon",
+     "angle": "SUBJECT ANGLE: a STILL LIFE — several related objects of the occasion arranged "
+              "together like a painting.",
+     "direction": "STYLE: old-master still life lighting, deep shadow, rich colour. Isolated on white."},
+    {"name": "Saffron pattern", "mode": "subject", "theme": "saffron-sunburst",
+     "angle": "SUBJECT ANGLE: a bold folk-art motif of the occasion, drawn in a regional Indian "
+              "craft idiom (Madhubani, Warli, Pattachitra, Gond).",
+     "direction": "STYLE: traditional Indian folk illustration, flat colour, confident linework. "
+                  "Isolated on pure white."},
+    {"name": "Teal architecture", "mode": "subject", "theme": "midnight-teal",
+     "angle": "SUBJECT ANGLE: ARCHITECTURE of the occasion — a dome, arch, gateway or shrine, "
+              "rendered as a single object.",
+     "direction": "STYLE: architectural render, dramatic uplighting, fine ornament. Isolated on white."},
+    {"name": "Card scene warm", "mode": "scene", "theme": "scene-card", "zone": "LEFT HALF",
+     "opposite": "right half",
+     "angle": "SUBJECT ANGLE: a table or threshold prepared for the occasion, seen from just above.",
+     "direction": "STYLE: warm overhead photography, natural light, real props and texture."},
 ]
+
 
 
 def variant(i: int) -> dict:
     return VARIANTS[i % len(VARIANTS)]
+
+
+def pool_size() -> int:
+    return len(VARIANTS)
 
 
 def system_for(v: dict, allow_likeness: bool = False) -> str:

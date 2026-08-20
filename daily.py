@@ -66,6 +66,41 @@ def _alt_list(cands, chosen=None) -> list:
     return out
 
 
+def redesign(run_id: int, n: Optional[int] = None) -> dict:
+    """Rebuild the same occasion on a DIFFERENT set of designs.
+
+    The variant index selects both the canvas and the art direction, so walking
+    the offset forward through the pool gives genuinely different designs rather
+    than re-rolls of the same five.
+    """
+    import prompts
+    db.init()
+    run = db.get_run(run_id)
+    if not run:
+        return {"ok": False, "error": "no such run"}
+
+    total = n or config.VARIANT_COUNT
+    offset = (run["var_offset"] or 0) + total
+    if offset >= prompts.pool_size():
+        offset = 0                            # wrapped the pool; start again
+    idx = [(offset + i) % prompts.pool_size() for i in range(total)]
+
+    db.set_run(run_id, status="generating", expected=total, var_offset=offset, error="")
+    for fn in db.clear_variants(run_id):
+        try:
+            (config.IMAGE_DIR / fn).unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+    b = json.loads(run["brief_json"] or "{}")
+    ok = sum(1 for r in gen.build_variants(
+        b, indices=idx, on_result=lambda rr: _save_variant(run_id, rr)) if r.get("ok"))
+    db.set_run(run_id, status="failed" if ok == 0 else "pending",
+               error="" if ok else "all variants failed")
+    print(f"[daily] run {run_id} redesigned at offset {offset}: {ok} ok", flush=True)
+    return {"ok": ok > 0, "variants": ok, "offset": offset}
+
+
 def regenerate(run_id: int, occasion: dict, n: Optional[int] = None) -> dict:
     """Rebuild a run's variants around a DIFFERENT occasion, in place.
 
@@ -77,7 +112,7 @@ def regenerate(run_id: int, occasion: dict, n: Optional[int] = None) -> dict:
     if not run:
         return {"ok": False, "error": "no such run"}
 
-    db.set_run(run_id, status="generating", error="")
+    db.set_run(run_id, status="generating", error="", var_offset=0)
     for fn in db.clear_variants(run_id):
         try:
             (config.IMAGE_DIR / fn).unlink(missing_ok=True)
@@ -122,7 +157,7 @@ def _save_variant(run_id: int, r: Dict, label: str = "") -> bool:
         if r.get("text_qa") is True:
             flags.append("possible text in artwork")
         if r.get("likeness_ok") is False:
-            flags.append("portrait may not look like the person")
+            flags.append("this looks like a different person — check before posting")
         db.add_variant(run_id, r["index"], style, fn, text_qa=r.get("text_qa"),
                        prompt=r.get("prompt", ""), flags="; ".join(flags))
         return True

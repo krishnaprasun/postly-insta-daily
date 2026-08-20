@@ -8,6 +8,7 @@ vivid green + gold two-tone Devanagari headline, navy body text, and the
 """
 from __future__ import annotations
 
+import functools
 import io
 import os
 from pathlib import Path
@@ -69,8 +70,19 @@ def latin(size: int, bold: bool = True):
 
 
 # ── Devanagari ──────────────────────────────────────────────────────────────
+@functools.lru_cache(maxsize=2048)
+def _hindi_png(text: str, size: int, color, bold: bool):
+    return hinditext.render_hindi(text, font_size=size, color=color, bold=bold)
+
+
 def hindi(text: str, size: int, color=NAVY, bold: bool = True) -> Optional[Image.Image]:
-    png = hinditext.render_hindi(text, font_size=size, color=color, bold=bold)
+    """Shaped Devanagari as an RGBA image.
+
+    Cached: fitting type to a box re-renders the same words at several sizes, and
+    word-wrap measures each candidate line repeatedly, so one post asked for the
+    same render dozens of times. Shaping is the slowest step in compositing.
+    """
+    png = _hindi_png(text, int(size), tuple(color), bool(bold))
     if not png:
         return None
     return Image.open(io.BytesIO(png)).convert("RGBA")

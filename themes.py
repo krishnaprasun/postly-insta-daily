@@ -199,6 +199,86 @@ def _saffron_sunburst(muted: bool) -> Image.Image:
     return im
 
 
+def _midnight_teal(muted: bool) -> Image.Image:
+    if muted:
+        return _vgrad((44, 50, 54), (22, 26, 30))
+    im = _vgrad((10, 78, 74), (6, 32, 40))
+    im = _radial_glow(im, PX * 0.5, PX * 0.26, PX * 0.58, (32, 150, 128), 105)
+    im = _bokeh(im, (214, 236, 208), 30, seed=21)
+    d = ImageDraw.Draw(im, "RGBA")
+    _mandala(d, PX - 110, PX - 110, 150, 4, bk.GOLD, 26)
+    return im
+
+
+def _blush_rose(muted: bool) -> Image.Image:
+    if muted:
+        im = _vgrad((250, 249, 249), (234, 232, 234))
+    else:
+        im = _vgrad((255, 246, 244), (250, 230, 226))
+        im = _radial_glow(im, PX * 0.24, PX * 0.20, PX * 0.5, (255, 242, 226), 88)
+    im = _foliage(im, "tr", (206, 138, 138) if not muted else (168, 166, 170), 44, 20, seed=31)
+    d = ImageDraw.Draw(im, "RGBA")
+    _mandala(d, 96, PX - 96, 128, 4, (198, 122, 122) if not muted else (168, 166, 170), 30)
+    return im
+
+
+def _paper_craft(muted: bool) -> Image.Image:
+    im = _vgrad((248, 242, 230), (236, 226, 208)) if not muted else _vgrad((246, 246, 244), (230, 230, 228))
+    d = ImageDraw.Draw(im, "RGBA")
+    col = (176, 108, 62) if not muted else (150, 150, 152)
+    _mandala(d, PX // 2, -60, 210, 5, col, 22, petals=20)
+    _mandala(d, PX // 2, PX + 60, 210, 5, col, 22, petals=20)
+    return im
+
+
+def _emerald_clean(muted: bool) -> Image.Image:
+    """The palest ground in the pool — near-white with a green cast.
+
+    This started as a solid emerald band across the lower third. The band was a
+    contrast trap: it sat under the body text (dark ink on dark green) and the
+    footer pill matched it exactly, so the pill disappeared. A ground that only
+    tints is safe with every layout.
+    """
+    if muted:
+        im = _vgrad((250, 250, 251), (236, 237, 240))
+        col = (120, 124, 134)
+    else:
+        im = _vgrad((252, 255, 253), (232, 245, 237))
+        col = (14, 116, 74)
+    d = ImageDraw.Draw(im, "RGBA")
+    for r in range(160, 520, 32):
+        d.ellipse([PX - r - 40, PX - r - 30, PX + r - 40, PX + r - 30],
+                  outline=(*col, 20), width=2)
+    _mandala(d, 90, 110, 96, 3, col, 24)
+    return im
+
+
+def _violet_dusk(muted: bool) -> Image.Image:
+    if muted:
+        return _vgrad((48, 46, 56), (24, 23, 30))
+    im = _vgrad((92, 48, 128), (30, 16, 52))
+    im = _radial_glow(im, PX * 0.7, PX * 0.22, PX * 0.55, (208, 118, 168), 108)
+    im = _bokeh(im, (255, 214, 160), 34, seed=41)
+    return im
+
+
+def _sky_ivory(muted: bool) -> Image.Image:
+    im = _vgrad((246, 251, 255), (228, 240, 250)) if not muted else _vgrad((249, 249, 250), (232, 233, 236))
+    im = _radial_glow(im, PX * 0.5, PX * 0.12, PX * 0.5, (255, 255, 255), 90)
+    im = _foliage(im, "bl", (128, 168, 196) if not muted else (160, 162, 168), 40, 16, seed=51)
+    d = ImageDraw.Draw(im, "RGBA")
+    _mandala(d, PX - 100, 110, 110, 3, (120, 160, 190) if not muted else (160, 162, 168), 26)
+    return im
+
+
+def _charcoal_gold(muted: bool) -> Image.Image:
+    im = _vgrad((44, 44, 48), (18, 18, 20)) if not muted else _vgrad((52, 52, 56), (26, 26, 29))
+    d = ImageDraw.Draw(im, "RGBA")
+    col = bk.GOLD if not muted else (168, 172, 184)
+    _mandala(d, PX // 2, PX // 2, 250, 6, col, 20, petals=28)
+    return im
+
+
 THEMES: Dict[str, Dict] = {
     # 1. light botanical ground, green + gold
     "ivory-botanical": {
@@ -231,6 +311,48 @@ THEMES: Dict[str, Dict] = {
         "acc1": (255, 255, 255), "acc2": (122, 22, 40), "ink": (255, 250, 240),
         "body": (255, 240, 220), "orn": (255, 246, 214), "bar": (132, 26, 46),
         "frame": "medallion",
+    },
+    # 6-12: the wider pool, so "show me five different ones" is genuinely different
+    "midnight-teal": {
+        "paint": _midnight_teal, "dark": True, "kind": "subject", "mirror": True,
+        "acc1": (255, 214, 130), "acc2": (236, 255, 246), "ink": (240, 255, 250),
+        "body": (214, 238, 230), "orn": (255, 214, 130), "bar": bk.GOLD, "frame": "arch",
+    },
+    "blush-rose": {
+        "paint": _blush_rose, "dark": False, "kind": "subject", "mirror": False,
+        "acc1": (168, 34, 66), "acc2": bk.GOLD_DK, "ink": (60, 30, 38), "body": (104, 68, 76),
+        "orn": (198, 122, 122), "bar": (168, 34, 66), "frame": "medallion",
+    },
+    "paper-craft": {
+        "paint": _paper_craft, "dark": False, "kind": "subject", "mirror": True,
+        "acc1": (168, 88, 40), "acc2": (34, 62, 108), "ink": (54, 42, 30), "body": (98, 82, 66),
+        "orn": (176, 108, 62), "bar": (168, 88, 40), "frame": "arch",
+    },
+    "emerald-clean": {
+        "paint": _emerald_clean, "dark": False, "kind": "subject", "mirror": False,
+        "acc1": (14, 116, 74), "acc2": bk.GOLD_DK, "ink": bk.NAVY, "body": bk.INK,
+        "orn": bk.GOLD, "bar": (14, 116, 74), "frame": "medallion",
+    },
+    "violet-dusk": {
+        "paint": None, "dark": True, "kind": "scene", "panel": "full",
+        "wash": (34, 16, 56),
+        "acc1": (255, 196, 214), "acc2": (255, 255, 255), "ink": (255, 250, 252),
+        "body": (238, 228, 240), "orn": (255, 196, 214), "bar": (196, 96, 148),
+    },
+    "sky-ivory": {
+        "paint": _sky_ivory, "dark": False, "kind": "subject", "mirror": True,
+        "acc1": (26, 74, 126), "acc2": bk.GOLD_DK, "ink": bk.NAVY, "body": bk.INK,
+        "orn": (120, 160, 190), "bar": (26, 74, 126), "frame": "medallion",
+    },
+    "charcoal-gold": {
+        "paint": _charcoal_gold, "dark": True, "kind": "subject", "mirror": False,
+        "acc1": bk.GOLD, "acc2": (255, 255, 255), "ink": (250, 248, 244),
+        "body": (226, 224, 218), "orn": bk.GOLD, "bar": bk.GOLD, "frame": "arch",
+    },
+    "scene-frost": {
+        "paint": None, "dark": False, "kind": "scene", "panel": "left",
+        "acc1": (168, 34, 66), "acc2": bk.GOLD_DK, "ink": bk.NAVY, "body": bk.INK,
+        "orn": bk.GOLD, "bar": (168, 34, 66),
     },
 }
 

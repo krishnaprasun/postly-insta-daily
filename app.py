@@ -212,6 +212,19 @@ def switch_occasion(run_id):
     return redirect(url_for("review", token=run["review_token"]))
 
 
+@app.route("/run/<int:run_id>/redesign", methods=["POST"])
+def redesign_run(run_id):
+    """Same occasion and words, five different designs."""
+    run = _run_or_404(run_id)
+    if request.form.get("token") != run["review_token"]:
+        abort(403)
+    if run["status"] == "generating":
+        return redirect(url_for("review", token=run["review_token"]))
+    db.set_run(run_id, status="generating")
+    threading.Thread(target=daily.redesign, args=(run_id,), daemon=True).start()
+    return redirect(url_for("review", token=run["review_token"]))
+
+
 @app.route("/run/<int:run_id>/caption", methods=["POST"])
 def save_caption(run_id):
     run = _run_or_404(run_id)

@@ -109,6 +109,16 @@
       {% endfor %}
     {% endif %}
   </div>
+  {% if not busy and variants %}
+  <form method="post" action="{{ url_for('redesign_run', run_id=run['id']) }}"
+        style="margin-top:16px"
+        onsubmit="return confirm('Show five different designs for the same occasion? These five are replaced.')">
+    <input type="hidden" name="token" value="{{ token }}">
+    <button class="btn" onclick="this.classList.add('busy');
+            this.innerHTML='<span class=spinner></span>Starting…'">↻ Show 5 different designs</button>
+    <span class="sub" style="margin-left:8px">Same occasion and words, new looks.</span>
+  </form>
+  {% endif %}
 </div>
 
 <div class="card">

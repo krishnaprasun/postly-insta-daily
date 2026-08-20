@@ -69,29 +69,37 @@ def _art(prompt: str, system: str, attempts: int = 2) -> Dict:
     return {"art": None, "error": last_err or "unknown"}
 
 
-LIKENESS_QA = ("Who is the person depicted in this image? If they are a recognisable public "
-               "figure, answer with their name only. If the person is not recognisable as any "
-               "specific real person, answer exactly: UNKNOWN")
+LIKENESS_QA = ("Who is the person depicted in this image? Answer with their full name only if "
+               "you recognise them as a specific real public figure. If there is no person, or "
+               "the figure is stylised, symbolic or not recognisable as any specific real person, "
+               "answer exactly: UNKNOWN")
 
 
 def _likeness_ok(art: bytes, name: str) -> Optional[bool]:
-    """Does the portrait actually read as the intended person?
+    """Does the portrait read as the intended person?
 
-    A wrong or generic face on a national figure's tribute is the most visible
-    failure this system can produce, and it is invisible in a thumbnail. The
-    check is advisory — it flags for the review page, it does not drop the
-    variant, because a vision model's recall on lesser-known figures is itself
-    unreliable.
+    Returns True (recognised), None (can't tell) or False (recognised as SOMEONE
+    ELSE). Only False is worth flagging.
+
+    The first version flagged UNKNOWN as a failure, so it fired on almost every
+    design: a flat-vector silhouette or a jewelled ornament is not recognisable
+    as any specific person, and lesser-known Indian figures are not reliably
+    recognised by a vision model even when the portrait is good. A warning that
+    appears on everything teaches you to ignore warnings, which is worse than no
+    warning at all. The genuinely dangerous case — a confident WRONG face on a
+    national figure's post — still flags.
     """
     if not (name and getattr(llm, "ENABLED", False)):
         return None
     try:
         ans = llm.vision_text(LIKENESS_QA, art, timeout=40).strip()
-        if ans.upper().startswith("UNKNOWN"):
-            return False
+        if ans.upper().startswith("UNKNOWN") or len(ans) > 60:
+            return None                      # stylised or no clear answer: not a finding
         want = {w for w in name.lower().replace(".", " ").split() if len(w) > 2}
         got = {w for w in ans.lower().replace(".", " ").split() if len(w) > 2}
-        return bool(want & got)
+        if want & got:
+            return True
+        return False                          # named a different person
     except Exception as exc:  # noqa: BLE001
         print(f"[gen] likeness QA failed: {exc}", flush=True)
         return None
